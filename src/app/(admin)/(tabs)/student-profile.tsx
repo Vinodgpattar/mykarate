@@ -8,6 +8,7 @@ import { DeleteStudentDialog } from '@/components/shared/DeleteStudentDialog'
 import { useAuth } from '@/context/AuthContext'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { format } from 'date-fns'
+import ImageViewing from 'react-native-image-viewing'
 
 const BELT_COLORS: Record<string, string> = {
   White: '#FFFFFF',
@@ -33,6 +34,8 @@ export default function StudentProfileScreen() {
   const [deleteDialogVisible, setDeleteDialogVisible] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [reactivating, setReactivating] = useState(false)
+  const [imageViewerVisible, setImageViewerVisible] = useState(false)
+  const [viewingImage, setViewingImage] = useState<string | null>(null)
 
   useEffect(() => {
     if (studentId) {
@@ -109,6 +112,12 @@ export default function StudentProfileScreen() {
     } finally {
       setReactivating(false)
     }
+  }
+
+  const handleViewImage = (imageUrl: string) => {
+    if (!imageUrl) return
+    setViewingImage(imageUrl)
+    setImageViewerVisible(true)
   }
 
   if (loading) {
@@ -336,9 +345,7 @@ export default function StudentProfileScreen() {
                     Student Photo
                   </Text>
                   <TouchableOpacity
-                    onPress={() => {
-                      // Open image viewer
-                    }}
+                    onPress={() => handleViewImage(student.student_photo_url)}
                   >
                     <MaterialCommunityIcons name="open-in-new" size={20} color="#7B2CBF" />
                   </TouchableOpacity>
@@ -351,9 +358,7 @@ export default function StudentProfileScreen() {
                     Aadhar Card
                   </Text>
                   <TouchableOpacity
-                    onPress={() => {
-                      // Open image viewer
-                    }}
+                    onPress={() => handleViewImage(student.aadhar_card_url)}
                   >
                     <MaterialCommunityIcons name="open-in-new" size={20} color="#7B2CBF" />
                   </TouchableOpacity>
@@ -432,6 +437,14 @@ export default function StudentProfileScreen() {
         onConfirm={handleDeleteConfirm}
         onCancel={handleDeleteCancel}
         loading={deleting}
+      />
+
+      <ImageViewing
+        images={viewingImage ? [{ uri: viewingImage }] : []}
+        imageIndex={0}
+        visible={imageViewerVisible}
+        onRequestClose={() => setImageViewerVisible(false)}
+        presentationStyle="overFullScreen"
       />
     </View>
   )

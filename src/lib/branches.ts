@@ -1027,19 +1027,20 @@ export async function assignAdminToBranch(
           }
 
           const emailResponse = await fetch(`${emailApiUrl}${emailEndpoint}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            email: normalizedEmail,
-            name: adminName,
-            password,
-            branchName: branch.branch.name,
-            branchCode: branch.branch.code,
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              email: normalizedEmail,
+              name: adminName,
+              password,
+              branchName: branch.branch.name,
+              branchCode: branch.branch.code,
+            }),
           })
 
-          const emailBody = `Welcome to ${branch.branch.name}. Your login credentials: Email: ${normalizedEmail}, Password: ${password}`
+          const emailBody = `Welcome to ${branch.branch?.name || 'the branch'}. Your login credentials: Email: ${normalizedEmail}, Password: ${password}`
 
           if (emailResponse.ok) {
             await logEmail(
@@ -1160,18 +1161,19 @@ export async function changeBranchAdmin(
               )
             } else {
               const emailResponse = await fetch(`${emailApiUrl}/api/email/send-admin-removed`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                email: oldAdmin.email,
-                name: oldAdmin.name,
-                branchName: branch.branch.name,
-                branchCode: branch.branch.code,
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  email: oldAdmin.email,
+                  name: oldAdmin.name,
+                  branchName: branch.branch.name,
+                  branchCode: branch.branch.code,
+                }),
               })
 
-              const emailBody = `You have been removed as admin from ${branch.branch.name} branch.`
+              const emailBody = `You have been removed as admin from ${branch.branch?.name || 'the branch'} branch.`
               if (emailResponse.ok) {
                 await logEmail(
                   oldAdmin.email,
