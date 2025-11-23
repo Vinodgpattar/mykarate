@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "Karate Dojo",
+    "slug": "karate-dojo-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#DC2626",
+      "resizeMode": "contain"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.karatedojo.mobile"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#DC2626"
+      },
+      "package": "com.karatedojo.mobile"
+    },
+    "web": {},
+    "plugins": [
+      "expo-router",
+      "expo-camera",
+      "expo-notifications"
+    ],
+    "scheme": "karate-dojo"
+  }
+}
+
+

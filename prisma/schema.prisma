@@ -1,0 +1,179 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Profile model for RBAC (Role-Based Access Control)
+// This table stores user roles (super_admin/admin/student) instead of using user_metadata
+model Profile {
+  id             String   @id @default(uuid()) @db.Uuid
+  user_id        String   @unique @map("user_id") @db.Uuid // References auth.users.id
+  role           String   @db.VarChar(20) // 'super_admin' | 'admin' | 'student'
+  email          String? // Denormalized for convenience
+  phone          String? // Admin phone number
+  address        String? // Admin address
+  qualifications String? @db.VarChar(200) // e.g., "3rd Dan Black Belt"
+  experience     String? @db.VarChar(100) // e.g., "15+ Years"
+  specialization String? @db.VarChar(200) // e.g., "Shotokan Karate"
+  branchId       String?  @map("branch_id") @db.Uuid // For branch admins
+  branch         Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  students       Student[] // Students linked to this profile
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  @@index([user_id])
+  @@index([role])
+  @@index([email])
+  @@index([branchId])
+  @@index([phone])
+  @@map("profiles")
+}
+
+// Branch model for multi-branch dojo management
+model Branch {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    // Branch name
+  code        String?   @unique // Optional branch code (e.g., "BR001")
+  address     String?   // Optional address
+  phone       String?   // Branch phone number
+  email       String?   // Branch email
+  status      String    @default("active") // "active" | "inactive"
+  createdById String    @map("created_by_id") @db.Uuid // Super admin user_id who created it
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Relations
+  admin       Profile?  // Current branch admin (one-to-one via Profile.branchId)
+  students    Student[] // Students in this branch
+  auditLogs   BranchAuditLog[] // Audit trail
+  
+  @@index([code])
+  @@index([status])
+  @@index([createdById])
+  @@index([phone])
+  @@index([email])
+  @@map("branches")
+}
+
+// Student model for student management
+model Student {
+  id        String   @id @default(uuid()) @db.Uuid
+  studentId String   @unique @map("student_id") @db.VarChar(15) // KSC24-0001 format
+  firstName String   @map("first_name") @db.VarChar(100)
+  lastName  String   @map("last_name") @db.VarChar(100)
+  email     String   @unique @db.VarChar(255)
+  phone     String?  @db.VarChar(20)
+  branchId  String   @map("branch_id") @db.Uuid
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  userId    String?  @map("user_id") @db.Uuid // Auth user ID
+  user      Profile? @relation(fields: [userId], references: [user_id], onDelete: SetNull)
+  
+  // Personal Information (Optional - Student completes)
+  dateOfBirth      DateTime? @map("date_of_birth") @db.Date
+  gender           String?   @db.VarChar(20)
+  address          String?   @db.Text
+  aadharNumber     String?   @map("aadhar_number") @db.VarChar(12)
+  
+  // Documents (Optional - Student uploads)
+  studentPhotoUrl  String?   @map("student_photo_url") @db.Text
+  aadharCardUrl    String?   @map("aadhar_card_url") @db.Text
+  
+  // Karate Information
+  currentBelt      String    @default("White") @map("current_belt") @db.VarChar(50)
+  
+  // Parent/Guardian Information (Optional)
+  parentName       String?   @map("parent_name") @db.VarChar(100)
+  parentEmail      String?   @map("parent_email") @db.VarChar(255)
+  parentPhone      String?   @map("parent_phone") @db.VarChar(20)
+  parentRelation   String?   @map("parent_relation") @db.VarChar(50)
+  
+  // Emergency Contact (Optional)
+  emergencyContactName     String? @map("emergency_contact_name") @db.VarChar(100)
+  emergencyContactPhone    String? @map("emergency_contact_phone") @db.VarChar(20)
+  emergencyContactRelation String? @map("emergency_contact_relation") @db.VarChar(50)
+  
+  // Medical & Notes (Optional)
+  medicalConditions String? @map("medical_conditions") @db.Text
+  notes             String? @db.Text
+  
+  // System Fields
+  profileCompleted Boolean  @default(false) @map("profile_completed")
+  isActive         Boolean  @default(true) @map("is_active")
+  passwordHash     String?  @map("password_hash") @db.VarChar(255)
+  createdById      String?  @map("created_by_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  
+  // Relations
+  resetTokens      PasswordResetToken[]
+  
+  @@index([studentId])
+  @@index([email])
+  @@index([branchId])
+  @@index([userId])
+  @@index([isActive])
+  @@index([profileCompleted])
+  @@index([currentBelt])
+  @@index([createdAt])
+  @@map("students")
+}
+
+// Branch Audit Log model for tracking changes
+model BranchAuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  branchId   String   @map("branch_id") @db.Uuid
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  action     String   @db.VarChar(50) // 'create', 'update', 'delete', 'admin_change'
+  oldValues  Json?    @map("old_values") // JSON object of old values
+  newValues  Json?    @map("new_values") // JSON object of new values
+  changedBy  String?  @map("changed_by") @db.Uuid // User who made the change
+  createdAt  DateTime @default(now()) @map("created_at")
+  
+  @@index([branchId])
+  @@index([changedBy])
+  @@index([createdAt])
+  @@map("branch_audit_logs")
+}
+
+// Email Log model for tracking sent emails
+model EmailLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  recipient    String   @db.VarChar(255)
+  subject      String   @db.VarChar(255)
+  body         String?  @db.Text
+  emailType    String?  @map("email_type") @db.VarChar(50) // 'admin_welcome', 'admin_removed', 'admin_assignment'
+  status       String   @default("sent") @db.VarChar(20) // 'sent', 'failed'
+  errorMessage String?  @map("error_message") @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+  
+  @@index([recipient])
+  @@index([status])
+  @@index([createdAt])
+  @@map("email_logs")
+}
+
+// Password Reset Token model for password reset functionality
+model PasswordResetToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  studentId String?  @map("student_id") @db.Uuid
+  student   Student? @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  token     String   @unique @db.VarChar(255)
+  email     String   @db.VarChar(255)
+  expiresAt DateTime @map("expires_at")
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  usedAt    DateTime? @map("used_at")
+  
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([used])
+  @@map("password_reset_tokens")
+}
+
