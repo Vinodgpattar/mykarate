@@ -5,8 +5,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '@/context/AuthContext'
-import { getStudentByUserId, updateStudent, type UpdateStudentData } from '@/lib/students'
+import { getStudentByUserId, updateStudent, uploadStudentPhoto, uploadAadharCard, type UpdateStudentData } from '@/lib/students'
 import * as ImagePicker from 'expo-image-picker'
+import { Alert } from 'react-native'
 
 export default function CompleteProfileScreen() {
   const router = useRouter()
@@ -88,20 +89,63 @@ export default function CompleteProfileScreen() {
   }
 
   const pickImage = async (type: 'student' | 'aadhar') => {
-    const result = await ImagePicker.launchImagePickerAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-    })
+    Alert.alert(
+      'Select Image',
+      'Choose an option',
+      [
+        { 
+          text: 'Camera', 
+          onPress: async () => {
+            const { status } = await ImagePicker.requestCameraPermissionsAsync()
+            if (status !== 'granted') {
+              setSnackbar({ visible: true, message: 'Permission to access camera is required' })
+              return
+            }
 
-    if (!result.canceled && result.assets[0]) {
-      if (type === 'student') {
-        setStudentPhoto(result.assets[0].uri)
-      } else {
-        setAadharPhoto(result.assets[0].uri)
-      }
-    }
+            const result = await ImagePicker.launchCameraAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              allowsEditing: true,
+              aspect: [4, 3],
+              quality: 0.8,
+            })
+
+            if (!result.canceled && result.assets[0]) {
+              if (type === 'student') {
+                setStudentPhoto(result.assets[0].uri)
+              } else {
+                setAadharPhoto(result.assets[0].uri)
+              }
+            }
+          }
+        },
+        { 
+          text: 'Gallery', 
+          onPress: async () => {
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+            if (status !== 'granted') {
+              setSnackbar({ visible: true, message: 'Permission to access media library is required' })
+              return
+            }
+
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              allowsEditing: true,
+              aspect: [4, 3],
+              quality: 0.8,
+            })
+
+            if (!result.canceled && result.assets[0]) {
+              if (type === 'student') {
+                setStudentPhoto(result.assets[0].uri)
+              } else {
+                setAadharPhoto(result.assets[0].uri)
+              }
+            }
+          }
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    )
   }
 
   const handleSubmit = async () => {
@@ -110,8 +154,33 @@ export default function CompleteProfileScreen() {
     try {
       setSaving(true)
 
-      // TODO: Upload images to Supabase Storage and get URLs
-      // For now, we'll skip image uploads (can be added later)
+      // Upload images if they are new (local URIs start with file://)
+      let studentPhotoUrl: string | undefined = undefined
+      let aadharCardUrl: string | undefined = undefined
+
+      if (studentPhoto && studentPhoto.startsWith('file://')) {
+        const uploadResult = await uploadStudentPhoto(studentPhoto, studentId)
+        if (uploadResult.error) {
+          setSnackbar({ visible: true, message: `Failed to upload photo: ${uploadResult.error.message}` })
+          return
+        }
+        studentPhotoUrl = uploadResult.url || undefined
+      } else if (studentPhoto) {
+        // Already a URL, use it as is
+        studentPhotoUrl = studentPhoto
+      }
+
+      if (aadharPhoto && aadharPhoto.startsWith('file://')) {
+        const uploadResult = await uploadAadharCard(aadharPhoto, studentId)
+        if (uploadResult.error) {
+          setSnackbar({ visible: true, message: `Failed to upload Aadhar card: ${uploadResult.error.message}` })
+          return
+        }
+        aadharCardUrl = uploadResult.url || undefined
+      } else if (aadharPhoto) {
+        // Already a URL, use it as is
+        aadharCardUrl = aadharPhoto
+      }
 
       const updateData: UpdateStudentData = {
         phone: formData.phone.trim() || undefined,
@@ -129,6 +198,8 @@ export default function CompleteProfileScreen() {
         emergencyContactRelation: formData.emergencyContactRelation || undefined,
         medicalConditions: formData.medicalConditions.trim() || undefined,
         notes: formData.notes.trim() || undefined,
+        studentPhotoUrl,
+        aadharCardUrl,
         profileCompleted: true, // Mark as completed
       }
 

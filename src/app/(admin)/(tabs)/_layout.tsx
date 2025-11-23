@@ -38,6 +38,15 @@ export default function AdminTabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="notifications"
+        options={{
+          title: 'Notifications',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="bell" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="more"
         options={{
           title: 'More',
@@ -84,6 +93,18 @@ export default function AdminTabsLayout() {
       />
       <Tabs.Screen
         name="edit-student"
+        options={{
+          href: null, // Hide from tabs
+        }}
+      />
+      <Tabs.Screen
+        name="create-notification"
+        options={{
+          href: null, // Hide from tabs
+        }}
+      />
+      <Tabs.Screen
+        name="notification-details"
         options={{
           href: null, // Hide from tabs
         }}

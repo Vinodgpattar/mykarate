@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { logger } from './logger'
+import * as FileSystem from 'expo-file-system/legacy'
 
 export interface Student {
   id: string
@@ -74,45 +75,79 @@ export interface UpdateStudentData {
 
 /**
  * Generate student ID in format: KSC24-0001
+ * Includes retry logic to handle race conditions
  */
-export async function generateStudentId(): Promise<string> {
-  try {
-    const year = new Date().getFullYear().toString().slice(-2) // "24"
-    const prefix = `KSC${year}` // "KSC24"
+export async function generateStudentId(maxRetries: number = 3): Promise<string> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const year = new Date().getFullYear().toString().slice(-2) // "24"
+      const prefix = `KSC${year}` // "KSC24"
 
-    // Get the latest student ID for this year
-    const { data, error } = await supabase
-      .from('students')
-      .select('student_id')
-      .like('student_id', `${prefix}-%`)
-      .order('created_at', { ascending: false })
-      .limit(1)
+      // Get the latest student ID for this year
+      const { data, error } = await supabase
+        .from('students')
+        .select('student_id')
+        .like('student_id', `${prefix}-%`)
+        .order('created_at', { ascending: false })
+        .limit(1)
 
-    if (error) {
-      logger.warn('Error fetching latest student ID', { error: error.message })
-    }
+      if (error) {
+        logger.warn('Error fetching latest student ID', { error: error.message })
+        // On last attempt, return fallback
+        if (attempt === maxRetries - 1) {
+          const timestamp = Date.now().toString().slice(-4)
+          return `KSC${year}-${timestamp}`
+        }
+        continue
+      }
 
-    let nextNumber = 1
-    if (data && data.length > 0 && data[0].student_id) {
-      // Extract number from ID (e.g., "KSC24-0123" -> 123)
-      const parts = data[0].student_id.split('-')
-      if (parts.length === 2) {
-        const lastNumber = parseInt(parts[1])
-        if (!isNaN(lastNumber)) {
-          nextNumber = lastNumber + 1
+      let nextNumber = 1
+      if (data && data.length > 0 && data[0].student_id) {
+        // Extract number from ID (e.g., "KSC24-0123" -> 123)
+        const parts = data[0].student_id.split('-')
+        if (parts.length === 2) {
+          const lastNumber = parseInt(parts[1])
+          if (!isNaN(lastNumber)) {
+            nextNumber = lastNumber + 1
+          }
         }
       }
-    }
 
-    // Format: KSC24-0001
-    return `${prefix}-${String(nextNumber).padStart(4, '0')}`
-  } catch (error) {
-    logger.error('Error generating student ID', error as Error)
-    // Fallback: return timestamp-based ID
-    const year = new Date().getFullYear().toString().slice(-2)
-    const timestamp = Date.now().toString().slice(-4)
-    return `KSC${year}-${timestamp}`
+      const nextId = `${prefix}-${String(nextNumber).padStart(4, '0')}`
+
+      // Verify ID doesn't already exist (race condition check)
+      const { data: existingStudent } = await supabase
+        .from('students')
+        .select('id')
+        .eq('student_id', nextId)
+        .maybeSingle()
+
+      if (!existingStudent) {
+        // ID is available
+        return nextId
+      }
+
+      // ID exists, try again with next number
+      if (attempt < maxRetries - 1) {
+        logger.warn('Student ID collision detected, retrying', { id: nextId, attempt: attempt + 1 })
+        // Small delay to avoid tight loop
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+    } catch (error) {
+      logger.error('Error generating student ID', error as Error)
+      // On last attempt, return fallback
+      if (attempt === maxRetries - 1) {
+        const year = new Date().getFullYear().toString().slice(-2)
+        const timestamp = Date.now().toString().slice(-4)
+        return `KSC${year}-${timestamp}`
+      }
+    }
   }
+
+  // Fallback: return timestamp-based ID
+  const year = new Date().getFullYear().toString().slice(-2)
+  const timestamp = Date.now().toString().slice(-4)
+  return `KSC${year}-${timestamp}`
 }
 
 /**
@@ -157,6 +192,83 @@ export async function createStudent(
         student: null,
         password: null,
         error: new Error('Service role key not configured'),
+      }
+    }
+
+    // Verify creator is super_admin
+    const { data: creatorProfile, error: creatorError } = await supabaseAdmin
+      .from('profiles')
+      .select('role')
+      .eq('user_id', createdById)
+      .single()
+
+    if (creatorError || !creatorProfile) {
+      logger.error('Error verifying creator role', creatorError as Error)
+      return {
+        student: null,
+        password: null,
+        error: new Error('Failed to verify permissions'),
+      }
+    }
+
+    if (creatorProfile.role !== 'super_admin') {
+      logger.warn('Unauthorized student creation attempt', { createdById, role: creatorProfile.role })
+      return {
+        student: null,
+        password: null,
+        error: new Error('Only super admins can create students'),
+      }
+    }
+
+    // Validate branch exists and is active
+    const { data: branchData, error: branchError } = await supabaseAdmin
+      .from('branches')
+      .select('id, name, status')
+      .eq('id', data.branchId)
+      .single()
+
+    if (branchError || !branchData) {
+      logger.error('Error validating branch', branchError as Error)
+      return {
+        student: null,
+        password: null,
+        error: new Error('Branch not found or invalid'),
+      }
+    }
+
+    if (branchData.status !== 'active') {
+      return {
+        student: null,
+        password: null,
+        error: new Error('Cannot create student for inactive branch'),
+      }
+    }
+
+    // Check if email already exists
+    const { data: existingStudent } = await supabaseAdmin
+      .from('students')
+      .select('id, email, student_id')
+      .eq('email', normalizedEmail)
+      .maybeSingle()
+
+    if (existingStudent) {
+      logger.warn('Duplicate email detected', { email: normalizedEmail })
+      return {
+        student: null,
+        password: null,
+        error: new Error('A student with this email already exists'),
+      }
+    }
+
+    // Check if auth user already exists
+    const { data: { users } } = await supabaseAdmin.auth.admin.listUsers()
+    const existingUser = users?.find(u => u.email === normalizedEmail)
+    if (existingUser) {
+      logger.warn('Auth user already exists for email', { email: normalizedEmail })
+      return {
+        student: null,
+        password: null,
+        error: new Error('An account with this email already exists'),
       }
     }
 
@@ -230,6 +342,68 @@ export async function createStudent(
       logger.error('Error creating student, cleaning up', studentError as Error)
       await supabaseAdmin.auth.admin.deleteUser(userId).catch(() => {})
       await supabaseAdmin.from('profiles').delete().eq('user_id', userId).catch(() => {})
+      
+      // Check if it's a duplicate student_id error and retry
+      if (studentError.code === '23505' || studentError.message.includes('duplicate') || studentError.message.includes('unique')) {
+        // Retry with new student ID
+        const retryStudentId = await generateStudentId()
+        const { data: retryData, error: retryError } = await supabaseAdmin
+          .from('students')
+          .insert({
+            student_id: retryStudentId,
+            first_name: data.firstName.trim(),
+            last_name: data.lastName.trim(),
+            email: normalizedEmail,
+            phone: data.phone?.trim() || null,
+            branch_id: data.branchId,
+            user_id: userId,
+            current_belt: 'White',
+            profile_completed: false,
+            is_active: true,
+            created_by_id: createdById,
+          })
+          .select()
+          .single()
+
+        if (retryError) {
+          logger.error('Error creating student on retry', retryError as Error)
+          return {
+            student: null,
+            password: null,
+            error: new Error('Failed to create student: ' + retryError.message),
+          }
+        }
+
+        // Send welcome email for retry
+        try {
+          const emailApiUrl = process.env.EXPO_PUBLIC_EMAIL_API_URL
+          if (emailApiUrl && emailApiUrl !== 'https://your-vercel-app.vercel.app') {
+            const emailResponse = await fetch(`${emailApiUrl}/api/email/send-student-welcome`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                email: normalizedEmail,
+                name: `${data.firstName} ${data.lastName}`,
+                studentId: retryStudentId,
+                password,
+                branchName: branchData.name,
+              }),
+            })
+
+            if (!emailResponse.ok) {
+              logger.warn('Failed to send welcome email', new Error('Email API returned error'))
+            }
+          }
+        } catch (emailError) {
+          logger.warn('Failed to send welcome email', emailError as Error)
+        }
+
+        logger.info('Student created successfully (after retry)', { studentId: retryStudentId, email: normalizedEmail })
+        return { student: retryData as Student, password, error: null }
+      }
+      
       return {
         student: null,
         password: null,
@@ -239,31 +413,31 @@ export async function createStudent(
 
     // Send welcome email
     try {
-      const emailApiUrl = process.env.EXPO_PUBLIC_EMAIL_API_URL || 'https://your-vercel-app.vercel.app'
-      const branchResult = await supabaseAdmin
-        .from('branches')
-        .select('name')
-        .eq('id', data.branchId)
-        .single()
-
-      const branchName = branchResult.data?.name || 'Karate Dojo'
-
-      const emailResponse = await fetch(`${emailApiUrl}/api/email/send-student-welcome`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const emailApiUrl = process.env.EXPO_PUBLIC_EMAIL_API_URL
+      
+      if (!emailApiUrl || emailApiUrl === 'https://your-vercel-app.vercel.app') {
+        logger.warn('Email API URL not configured, skipping welcome email', {
           email: normalizedEmail,
-          name: `${data.firstName} ${data.lastName}`,
           studentId,
-          password,
-          branchName,
-        }),
-      })
+        })
+      } else {
+        const emailResponse = await fetch(`${emailApiUrl}/api/email/send-student-welcome`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: normalizedEmail,
+            name: `${data.firstName} ${data.lastName}`,
+            studentId,
+            password,
+            branchName: branchData.name,
+          }),
+        })
 
-      if (!emailResponse.ok) {
-        logger.warn('Failed to send welcome email', new Error('Email API returned error'))
+        if (!emailResponse.ok) {
+          logger.warn('Failed to send welcome email', new Error('Email API returned error'))
+        }
       }
     } catch (emailError) {
       logger.warn('Failed to send welcome email', emailError as Error)
@@ -482,6 +656,29 @@ export async function deleteStudent(
       }
     }
 
+    // Verify deleter is super_admin
+    const { data: deleterProfile, error: deleterError } = await supabaseAdmin
+      .from('profiles')
+      .select('role')
+      .eq('user_id', deletedBy)
+      .single()
+
+    if (deleterError || !deleterProfile) {
+      logger.error('Error verifying deleter role', deleterError as Error)
+      return {
+        success: false,
+        error: new Error('Failed to verify permissions'),
+      }
+    }
+
+    if (deleterProfile.role !== 'super_admin') {
+      logger.warn('Unauthorized student deletion attempt', { deletedBy, role: deleterProfile.role })
+      return {
+        success: false,
+        error: new Error('Only super admins can delete students'),
+      }
+    }
+
     // Get student info for cleanup
     const student = await getStudentById(studentId)
     if (!student.student) {
@@ -494,12 +691,47 @@ export async function deleteStudent(
     if (hardDelete) {
       // Hard delete: Remove everything
       // Delete files from storage (if URLs exist)
+      const filesToDelete: string[] = []
+      
       if (student.student.student_photo_url) {
-        // Extract file path and delete
-        // Implementation depends on storage structure
+        // Extract file path from URL
+        // URL format: https://project.supabase.co/storage/v1/object/public/student-documents/photos/{studentId}/file.jpg
+        const url = student.student.student_photo_url
+        const match = url.match(/\/student-documents\/(.+)$/)
+        if (match && match[1]) {
+          filesToDelete.push(match[1])
+        }
       }
+      
       if (student.student.aadhar_card_url) {
-        // Extract file path and delete
+        // Extract file path from URL
+        const url = student.student.aadhar_card_url
+        const match = url.match(/\/student-documents\/(.+)$/)
+        if (match && match[1]) {
+          filesToDelete.push(match[1])
+        }
+      }
+
+      // Delete files from storage (non-blocking)
+      if (filesToDelete.length > 0) {
+        try {
+          await supabaseAdmin.storage.from('student-documents').remove(filesToDelete)
+          logger.info('Deleted student files from storage', { studentId, files: filesToDelete.length })
+        } catch (storageError) {
+          // Log but don't fail - file deletion is optional
+          logger.warn('Failed to delete student files from storage', { studentId, error: storageError })
+        }
+      }
+
+      // Delete profile first (will cascade from user_id)
+      if (student.student.user_id) {
+        await supabaseAdmin
+          .from('profiles')
+          .delete()
+          .eq('user_id', student.student.user_id)
+          .catch(() => {
+            // Ignore errors
+          })
       }
 
       // Delete auth user if exists
@@ -539,6 +771,53 @@ export async function deleteStudent(
     return {
       success: false,
       error: error instanceof Error ? error : new Error('Failed to delete student'),
+    }
+  }
+}
+
+/**
+ * Reactivate a student (set is_active = true)
+ */
+export async function reactivateStudent(
+  studentId: string,
+  reactivatedBy: string
+): Promise<{ success: boolean; error: null } | { success: false; error: Error }> {
+  try {
+    const { supabaseAdmin } = await import('./supabase')
+    if (!supabaseAdmin) {
+      return {
+        success: false,
+        error: new Error('Service role key not configured'),
+      }
+    }
+
+    // Check if student exists
+    const student = await getStudentById(studentId)
+    if (!student.student) {
+      return {
+        success: false,
+        error: new Error('Student not found'),
+      }
+    }
+
+    // Update is_active to true
+    const { error } = await supabaseAdmin
+      .from('students')
+      .update({ is_active: true })
+      .eq('id', studentId)
+
+    if (error) {
+      logger.error('Error reactivating student', error as Error)
+      return { success: false, error: new Error(error.message) }
+    }
+
+    logger.info('Student reactivated successfully', { studentId, reactivatedBy })
+    return { success: true, error: null }
+  } catch (error) {
+    logger.error('Unexpected error reactivating student', error as Error)
+    return {
+      success: false,
+      error: error instanceof Error ? error : new Error('Failed to reactivate student'),
     }
   }
 }
@@ -607,6 +886,162 @@ export async function getStudentStatistics(branchId?: string): Promise<{
       profileIncomplete: 0,
       error: error instanceof Error ? error : new Error('Failed to fetch statistics'),
     }
+  }
+}
+
+/**
+ * Upload student photo to Supabase Storage
+ */
+export async function uploadStudentPhoto(
+  imageUri: string,
+  studentId: string
+): Promise<{ url: string | null; error: Error | null }> {
+  try {
+    const { supabaseAdmin } = await import('./supabase')
+    if (!supabaseAdmin) {
+      return { url: null, error: new Error('Service role key not configured') }
+    }
+
+    // Check if storage bucket exists (use admin for check)
+    const { data: buckets, error: bucketError } = await supabaseAdmin.storage.listBuckets()
+    if (bucketError) {
+      logger.error('Error checking storage buckets', bucketError as Error)
+      return { url: null, error: new Error('Failed to access storage') }
+    }
+
+    const bucketExists = buckets?.some((b) => b.id === 'student-documents')
+    if (!bucketExists) {
+      return { 
+        url: null, 
+        error: new Error(
+          'Storage bucket "student-documents" not found. Please create it in Supabase Dashboard → Storage.'
+        ) 
+      }
+    }
+
+    // Read file as ArrayBuffer
+    const base64 = await FileSystem.readAsStringAsync(imageUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    })
+
+    // Convert base64 to ArrayBuffer
+    const binaryString = atob(base64)
+    const bytes = new Uint8Array(binaryString.length)
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
+
+    // Generate unique filename
+    const timestamp = Date.now()
+    const random = Math.random().toString(36).substring(2, 9)
+    const filename = `photos/${studentId}/${timestamp}_${random}.jpg`
+    const filePath = filename
+
+    // Upload to Supabase Storage (use regular supabase client for RLS)
+    const { data: uploadData, error } = await supabase.storage
+      .from('student-documents')
+      .upload(filePath, bytes.buffer, {
+        contentType: 'image/jpeg',
+        upsert: false,
+      })
+
+    if (error) {
+      logger.error('Error uploading student photo', error as Error)
+      return { url: null, error: new Error(error.message) }
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('student-documents')
+      .getPublicUrl(filePath)
+
+    if (!urlData?.publicUrl) {
+      return { url: null, error: new Error('Failed to get image URL') }
+    }
+
+    logger.info('Student photo uploaded successfully', { studentId, url: urlData.publicUrl })
+    return { url: urlData.publicUrl, error: null }
+  } catch (error) {
+    logger.error('Unexpected error uploading student photo', error as Error)
+    return { url: null, error: error instanceof Error ? error : new Error('Failed to upload photo') }
+  }
+}
+
+/**
+ * Upload Aadhar card to Supabase Storage
+ */
+export async function uploadAadharCard(
+  imageUri: string,
+  studentId: string
+): Promise<{ url: string | null; error: Error | null }> {
+  try {
+    const { supabaseAdmin } = await import('./supabase')
+    if (!supabaseAdmin) {
+      return { url: null, error: new Error('Service role key not configured') }
+    }
+
+    // Check if storage bucket exists (use admin for check)
+    const { data: buckets, error: bucketError } = await supabaseAdmin.storage.listBuckets()
+    if (bucketError) {
+      logger.error('Error checking storage buckets', bucketError as Error)
+      return { url: null, error: new Error('Failed to access storage') }
+    }
+
+    const bucketExists = buckets?.some((b) => b.id === 'student-documents')
+    if (!bucketExists) {
+      return { 
+        url: null, 
+        error: new Error(
+          'Storage bucket "student-documents" not found. Please create it in Supabase Dashboard → Storage.'
+        ) 
+      }
+    }
+
+    // Read file as ArrayBuffer
+    const base64 = await FileSystem.readAsStringAsync(imageUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    })
+
+    // Convert base64 to ArrayBuffer
+    const binaryString = atob(base64)
+    const bytes = new Uint8Array(binaryString.length)
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
+
+    // Generate unique filename
+    const timestamp = Date.now()
+    const random = Math.random().toString(36).substring(2, 9)
+    const filename = `aadhar/${studentId}/${timestamp}_${random}.jpg`
+    const filePath = filename
+
+    // Upload to Supabase Storage (use regular supabase client for RLS)
+    const { data: uploadData, error } = await supabase.storage
+      .from('student-documents')
+      .upload(filePath, bytes.buffer, {
+        contentType: 'image/jpeg',
+        upsert: false,
+      })
+
+    if (error) {
+      logger.error('Error uploading Aadhar card', error as Error)
+      return { url: null, error: new Error(error.message) }
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('student-documents')
+      .getPublicUrl(filePath)
+
+    if (!urlData?.publicUrl) {
+      return { url: null, error: new Error('Failed to get image URL') }
+    }
+
+    logger.info('Aadhar card uploaded successfully', { studentId, url: urlData.publicUrl })
+    return { url: urlData.publicUrl, error: null }
+  } catch (error) {
+    logger.error('Unexpected error uploading Aadhar card', error as Error)
+    return { url: null, error: error instanceof Error ? error : new Error('Failed to upload Aadhar card') }
   }
 }
 

@@ -117,24 +117,25 @@ export default function CreateBranchScreen() {
       newErrors.email = 'Please enter a valid email address'
     }
 
-    // Validate admin fields if assigning admin
-    if (adminData.assignAdmin) {
-      if (!adminData.adminName.trim()) {
-        newErrors.adminName = 'Admin name is required'
-      } else if (adminData.adminName.trim().length < 2) {
-        newErrors.adminName = 'Admin name must be at least 2 characters'
-      }
-
-      if (!adminData.adminEmail.trim()) {
-        newErrors.adminEmail = 'Admin email is required'
-      } else if (!validateEmail(adminData.adminEmail)) {
-        newErrors.adminEmail = 'Please enter a valid email address'
-      }
-
-      if (adminData.adminPhone.trim() && !validatePhone(adminData.adminPhone)) {
-        newErrors.adminPhone = 'Please enter a valid phone number'
-      }
-    }
+    // Admin assignment is disabled - Super Admin manages all branches directly
+    // Admin validation removed - no branch admins will be assigned
+    // if (adminData.assignAdmin) {
+    //   if (!adminData.adminName.trim()) {
+    //     newErrors.adminName = 'Admin name is required'
+    //   } else if (adminData.adminName.trim().length < 2) {
+    //     newErrors.adminName = 'Admin name must be at least 2 characters'
+    //   }
+    //
+    //   if (!adminData.adminEmail.trim()) {
+    //     newErrors.adminEmail = 'Admin email is required'
+    //   } else if (!validateEmail(adminData.adminEmail)) {
+    //     newErrors.adminEmail = 'Please enter a valid email address'
+    //   }
+    //
+    //   if (adminData.adminPhone.trim() && !validatePhone(adminData.adminPhone)) {
+    //     newErrors.adminPhone = 'Please enter a valid phone number'
+    //   }
+    // }
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
@@ -174,21 +175,22 @@ export default function CreateBranchScreen() {
           setTimeout(() => router.back(), 1500)
         }
       } else {
-        // Create branch
+        // Create branch - Admin assignment disabled: Super Admin manages all branches
         const createData: CreateBranchData = {
           name: formData.name.trim(),
           address: formData.address.trim(),
           phone: formData.phone.trim() || undefined,
           email: formData.email.trim() || undefined,
-          assignAdmin: adminData.assignAdmin,
-          adminName: adminData.assignAdmin ? adminData.adminName.trim() : undefined,
-          adminEmail: adminData.assignAdmin ? adminData.adminEmail.trim() : undefined,
-          adminPhone: adminData.assignAdmin && adminData.adminPhone.trim() ? adminData.adminPhone.trim() : undefined,
-          adminAddress: adminData.assignAdmin && adminData.adminAddress.trim() ? adminData.adminAddress.trim() : undefined,
-          adminQualifications: adminData.assignAdmin && adminData.adminQualifications.trim() ? adminData.adminQualifications.trim() : undefined,
-          adminExperience: adminData.assignAdmin && adminData.adminExperience.trim() ? adminData.adminExperience.trim() : undefined,
-          adminSpecialization: adminData.assignAdmin && adminData.adminSpecialization.trim() ? adminData.adminSpecialization.trim() : undefined,
-          sendEmail: adminData.sendEmail,
+          assignAdmin: false, // Always false - Super Admin manages all branches directly
+          // Admin assignment fields disabled - uncomment to re-enable:
+          // adminName: adminData.assignAdmin ? adminData.adminName.trim() : undefined,
+          // adminEmail: adminData.assignAdmin ? adminData.adminEmail.trim() : undefined,
+          // adminPhone: adminData.assignAdmin && adminData.adminPhone.trim() ? adminData.adminPhone.trim() : undefined,
+          // adminAddress: adminData.assignAdmin && adminData.adminAddress.trim() ? adminData.adminAddress.trim() : undefined,
+          // adminQualifications: adminData.assignAdmin && adminData.adminQualifications.trim() ? adminData.adminQualifications.trim() : undefined,
+          // adminExperience: adminData.assignAdmin && adminData.adminExperience.trim() ? adminData.adminExperience.trim() : undefined,
+          // adminSpecialization: adminData.assignAdmin && adminData.adminSpecialization.trim() ? adminData.adminSpecialization.trim() : undefined,
+          // sendEmail: adminData.sendEmail,
         }
 
         const result = await createBranch(createData, user.id)
@@ -197,11 +199,7 @@ export default function CreateBranchScreen() {
           setSnackbarMessage(result.error.message)
           setSnackbarVisible(true)
         } else {
-          if (adminData.assignAdmin) {
-            setSnackbarMessage('Branch created and admin assigned successfully!')
-          } else {
-            setSnackbarMessage(`Branch "${result.branch?.name}" created successfully!`)
-          }
+          setSnackbarMessage(`Branch "${result.branch?.name}" created successfully!`)
           setSnackbarVisible(true)
           setTimeout(() => router.back(), 1500)
         }
@@ -389,7 +387,10 @@ export default function CreateBranchScreen() {
           </Card.Content>
         </Card>
 
-        {/* Admin Assignment Card (only for new branches) */}
+        {/* Admin Assignment Card - DISABLED: Super Admin manages all branches directly */}
+        {/* Branch Admin assignment is disabled. Super Admin manages all branches. */}
+        {/* Uncomment the section below to re-enable branch admin assignment in the future */}
+        {/*
         {!isEdit && (
           <Card style={styles.card}>
             <Card.Content>
@@ -417,7 +418,6 @@ export default function CreateBranchScreen() {
 
               {adminData.assignAdmin && (
                 <View style={styles.adminFields}>
-                  {/* Admin Name */}
                   <TextInput
                     label="Admin Full Name *"
                     value={adminData.adminName}
@@ -444,7 +444,6 @@ export default function CreateBranchScreen() {
                     </View>
                   )}
 
-                  {/* Admin Email */}
                   <TextInput
                     label="Admin Email *"
                     value={adminData.adminEmail}
@@ -473,7 +472,6 @@ export default function CreateBranchScreen() {
                     </View>
                   )}
 
-                  {/* Admin Phone */}
                   <TextInput
                     label="Admin Phone (optional)"
                     value={adminData.adminPhone}
@@ -501,7 +499,6 @@ export default function CreateBranchScreen() {
                     </View>
                   )}
 
-                  {/* Admin Address */}
                   <TextInput
                     label="Admin Address (optional)"
                     value={adminData.adminAddress}
@@ -516,7 +513,6 @@ export default function CreateBranchScreen() {
                     disabled={loading}
                   />
 
-                  {/* Admin Qualifications */}
                   <TextInput
                     label="Qualifications (optional)"
                     value={adminData.adminQualifications}
@@ -530,7 +526,6 @@ export default function CreateBranchScreen() {
                     maxLength={200}
                   />
 
-                  {/* Admin Experience */}
                   <TextInput
                     label="Experience (optional)"
                     value={adminData.adminExperience}
@@ -544,7 +539,6 @@ export default function CreateBranchScreen() {
                     maxLength={100}
                   />
 
-                  {/* Admin Specialization */}
                   <TextInput
                     label="Specialization (optional)"
                     value={adminData.adminSpecialization}
@@ -558,7 +552,6 @@ export default function CreateBranchScreen() {
                     maxLength={200}
                   />
 
-                  {/* Send Email Checkbox */}
                   <View style={styles.checkboxContainer}>
                     <Checkbox
                       status={adminData.sendEmail ? 'checked' : 'unchecked'}
@@ -578,6 +571,7 @@ export default function CreateBranchScreen() {
             </Card.Content>
           </Card>
         )}
+        */}
       </ScrollView>
 
       {/* Sticky Action Buttons */}

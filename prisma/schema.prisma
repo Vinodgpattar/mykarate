@@ -23,6 +23,9 @@ model Profile {
   branchId       String?  @map("branch_id") @db.Uuid // For branch admins
   branch         Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
   students       Student[] // Students linked to this profile
+  createdNotifications Notification[] @relation("NotificationCreator")
+  notificationRecipients NotificationRecipient[] @relation("NotificationRecipient")
+  pushTokens    UserPushToken[] @relation("PushTokenUser")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   
@@ -51,6 +54,7 @@ model Branch {
   admin       Profile?  // Current branch admin (one-to-one via Profile.branchId)
   students    Student[] // Students in this branch
   auditLogs   BranchAuditLog[] // Audit trail
+  notifications Notification[] // Notifications targeted to this branch
   
   @@index([code])
   @@index([status])
@@ -175,5 +179,75 @@ model PasswordResetToken {
   @@index([expiresAt])
   @@index([used])
   @@map("password_reset_tokens")
+}
+
+// Notification model for admin-to-student notifications
+model Notification {
+  id                String   @id @default(uuid()) @db.Uuid
+  title             String
+  message           String   @db.Text
+  type              String   @db.VarChar(50) // 'announcement', 'alert', 'reminder', 'achievement', 'event', 'payment', 'class', 'system'
+  imageUrl          String?  @map("image_url") @db.Text
+  createdBy         String   @map("created_by") @db.Uuid
+  creator           Profile  @relation("NotificationCreator", fields: [createdBy], references: [user_id], onDelete: Cascade)
+  targetType        String   @map("target_type") @db.VarChar(20) // 'all', 'branch', 'students'
+  targetBranchId    String?  @map("target_branch_id") @db.Uuid
+  targetBranch      Branch?  @relation(fields: [targetBranchId], references: [id], onDelete: SetNull)
+  targetStudentIds  Json?    @map("target_student_ids") // JSON array of student IDs
+  scheduledAt       DateTime? @map("scheduled_at")
+  sentAt            DateTime? @map("sent_at")
+  readCount         Int      @default(0) @map("read_count")
+  totalSent         Int      @default(0) @map("total_sent")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  
+  recipients        NotificationRecipient[]
+  
+  @@index([createdBy])
+  @@index([type])
+  @@index([targetType])
+  @@index([targetBranchId])
+  @@index([createdAt])
+  @@index([sentAt])
+  @@map("notifications")
+}
+
+// Notification Recipient model for tracking who received notifications
+model NotificationRecipient {
+  id            String       @id @default(uuid()) @db.Uuid
+  notificationId String      @map("notification_id") @db.Uuid
+  notification  Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  userId        String       @map("user_id") @db.Uuid
+  user          Profile      @relation("NotificationRecipient", fields: [userId], references: [user_id], onDelete: Cascade)
+  read          Boolean      @default(false)
+  readAt        DateTime?    @map("read_at")
+  pushSent      Boolean      @default(false) @map("push_sent")
+  pushSentAt    DateTime?    @map("push_sent_at")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  
+  @@unique([notificationId, userId])
+  @@index([notificationId])
+  @@index([userId])
+  @@index([read])
+  @@index([userId, read])
+  @@map("notification_recipients")
+}
+
+// User Push Token model for Expo push notifications
+model UserPushToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  user      Profile  @relation("PushTokenUser", fields: [userId], references: [user_id], onDelete: Cascade)
+  token     String
+  platform  String   @db.VarChar(20) // 'ios', 'android'
+  deviceId  String?  @map("device_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  @@unique([userId, platform, deviceId])
+  @@index([userId])
+  @@index([token])
+  @@index([platform])
+  @@map("user_push_tokens")
 }
 

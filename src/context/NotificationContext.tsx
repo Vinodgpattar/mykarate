@@ -136,18 +136,22 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           })
 
           if (tokenData) {
-            // Save to Supabase (you'll need to create this table)
+            // Save to Supabase user_push_tokens table
+            // Get device ID if available
+            const deviceId = await Notifications.getDevicePushTokenAsync().catch(() => null)
+            
             const { error } = await supabase
               .from('user_push_tokens')
               .upsert(
                 {
                   user_id: user.id,
-                  push_token: tokenData,
+                  token: tokenData,
                   platform: Platform.OS,
+                  device_id: deviceId ? String(deviceId) : null,
                   updated_at: new Date().toISOString(),
                 },
                 {
-                  onConflict: 'user_id,platform',
+                  onConflict: 'user_id,platform,device_id',
                 }
               )
 

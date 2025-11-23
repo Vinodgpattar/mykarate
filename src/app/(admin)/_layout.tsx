@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Stack, useRouter } from 'expo-router'
 import { useAuth } from '@/context/AuthContext'
 import { getProfileByUserId } from '@/lib/profiles'
+import { supabase } from '@/lib/supabase'
 import { View, ActivityIndicator, StyleSheet } from 'react-native'
 import { Text } from 'react-native-paper'
 
@@ -14,6 +15,13 @@ export default function AdminLayout() {
   useEffect(() => {
     const checkAdminAccess = async () => {
       if (authLoading) return
+
+      // Check if session is still valid
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      if (!currentSession) {
+        router.replace('/(auth)/login')
+        return
+      }
 
       if (!session || !user) {
         router.replace('/(auth)/login')

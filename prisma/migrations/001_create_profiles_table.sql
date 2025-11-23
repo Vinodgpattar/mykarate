@@ -2,7 +2,7 @@
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID UNIQUE NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  role VARCHAR(20) NOT NULL,
+  role VARCHAR(20) NOT NULL CHECK (role IN ('super_admin', 'admin', 'student')),
   email TEXT,
   "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -30,4 +30,10 @@ CREATE POLICY "Users can read own profile"
 CREATE POLICY "Service role full access"
   ON profiles FOR ALL
   USING (auth.role() = 'service_role');
+
+-- Only service role can update role field (prevent privilege escalation)
+CREATE POLICY "Only service role can update role"
+  ON profiles FOR UPDATE
+  USING (auth.role() = 'service_role')
+  WITH CHECK (auth.role() = 'service_role');
 

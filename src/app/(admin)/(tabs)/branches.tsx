@@ -155,8 +155,25 @@ export default function BranchesScreen() {
       if (result.error) {
         setSnackbar({ visible: true, message: result.error.message })
       } else {
-        setSnackbar({ visible: true, message: `Branch "${branchName}" deleted successfully` })
+        // Reload data to refresh the list
         loadData()
+        
+        // Check if branch still exists (soft deleted) or was removed (hard deleted)
+        // We need to check after a small delay to allow the database to update
+        setTimeout(async () => {
+          const updatedResult = await getBranches({ page: 1, limit: 1000, includeAdmin: true })
+          const deletedBranch = updatedResult.branches?.find(b => b.id === branchId)
+          
+          if (deletedBranch && deletedBranch.status === 'inactive') {
+            // Branch was soft deleted - show informative message
+            setSnackbar({ 
+              visible: true, 
+              message: `Branch "${branchName}" has students and was set to inactive. Students are still associated with this branch.` 
+            })
+          } else {
+            setSnackbar({ visible: true, message: `Branch "${branchName}" deleted successfully` })
+          }
+        }, 500)
       }
     } catch (error) {
       setSnackbar({ visible: true, message: 'Failed to delete branch' })
@@ -320,7 +337,8 @@ export default function BranchesScreen() {
                 branch={branch}
                 isSuperAdmin={isSuperAdmin}
                 onEdit={() => router.push(`/(admin)/(tabs)/edit-branch?id=${branch.id}`)}
-                onAssignAdmin={() => router.push(`/(admin)/(tabs)/assign-admin?branchId=${branch.id}`)}
+                // Admin assignment disabled - Super Admin manages all branches directly
+                onAssignAdmin={() => {}} // Disabled - no action
                 onDelete={() => handleDelete(branch.id, branch.name)}
               />
             ))
@@ -530,6 +548,9 @@ function BranchCard({
               </Button>
               {isSuperAdmin && (
                 <>
+                  {/* Assign Admin button disabled - Super Admin manages all branches directly */}
+                  {/* Uncomment below to re-enable admin assignment */}
+                  {/*
                   <Button
                     mode="outlined"
                     onPress={onAssignAdmin}
@@ -538,6 +559,7 @@ function BranchCard({
                   >
                     Admin
                   </Button>
+                  */}
                   <Button
                     mode="outlined"
                     onPress={onDelete}

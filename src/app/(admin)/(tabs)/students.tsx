@@ -3,7 +3,8 @@ import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Image }
 import { Text, Card, Button, ActivityIndicator, Snackbar, Searchbar, Chip, Avatar } from 'react-native-paper'
 import { useRouter } from 'expo-router'
 import { useAuth } from '@/context/AuthContext'
-import { getStudents, deleteStudent, getStudentStatistics, type Student } from '@/lib/students'
+import { getStudents, deleteStudent, reactivateStudent, getStudentStatistics, type Student } from '@/lib/students'
+import { DeleteStudentDialog } from '@/components/shared/DeleteStudentDialog'
 import { getBranches, type Branch } from '@/lib/branches'
 import { getProfileByUserId } from '@/lib/profiles'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
@@ -42,6 +43,13 @@ export default function StudentsScreen() {
   const [branchFilter, setBranchFilter] = useState<string>('')
   const [beltFilter, setBeltFilter] = useState<string>('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
+  const [deleteDialog, setDeleteDialog] = useState<{ visible: boolean; studentId: string | null; studentName: string }>({
+    visible: false,
+    studentId: null,
+    studentName: '',
+  })
+  const [deleting, setDeleting] = useState(false)
+  const [reactivating, setReactivating] = useState<string | null>(null)
   const [stats, setStats] = useState<StudentStats>({
     total: 0,
     active: 0,
@@ -194,19 +202,55 @@ export default function StudentsScreen() {
     loadData()
   }, [])
 
-  const handleDelete = async (studentId: string, studentName: string) => {
-    if (!user?.id) return
+  const handleDeleteClick = (studentId: string, studentName: string) => {
+    setDeleteDialog({ visible: true, studentId, studentName })
+  }
 
+  const handleDeleteConfirm = async (hardDelete: boolean) => {
+    if (!user?.id || !deleteDialog.studentId) return
+
+    setDeleting(true)
     try {
-      const result = await deleteStudent(studentId, false, user.id) // Soft delete
+      const result = await deleteStudent(deleteDialog.studentId, hardDelete, user.id)
       if (result.error) {
         setSnackbar({ visible: true, message: result.error.message })
       } else {
-        setSnackbar({ visible: true, message: `Student "${studentName}" deleted successfully` })
+        setSnackbar({
+          visible: true,
+          message: hardDelete
+            ? `Student "${deleteDialog.studentName}" permanently deleted`
+            : `Student "${deleteDialog.studentName}" deactivated successfully`,
+        })
         loadData()
+        setDeleteDialog({ visible: false, studentId: null, studentName: '' })
       }
     } catch (error) {
       setSnackbar({ visible: true, message: 'Failed to delete student' })
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const handleDeleteCancel = () => {
+    setDeleteDialog({ visible: false, studentId: null, studentName: '' })
+  }
+
+  const handleReactivate = async (studentId: string, studentName: string) => {
+    if (!user?.id) return
+
+    setReactivating(studentId)
+    try {
+      const result = await reactivateStudent(studentId, user.id)
+      if (result.error) {
+        setSnackbar({ visible: true, message: result.error.message })
+      } else {
+        setSnackbar({ visible: true, message: `Student "${studentName}" reactivated successfully` })
+        loadData()
+      }
+    } catch (error) {
+      setSnackbar({ visible: true, message: 'Failed to reactivate student' })
+    } finally {
+      setReactivating(null)
     }
   }
 
@@ -384,7 +428,7 @@ export default function StudentsScreen() {
                   selected={beltFilter === belt}
                   onPress={() => setBeltFilter(beltFilter === belt ? '' : belt)}
                   style={styles.chip}
-                  selectedColor="#7B2CBF"}
+                  selectedColor="#7B2CBF"
                 >
                   {belt}
                 </Chip>
@@ -416,7 +460,9 @@ export default function StudentsScreen() {
                 student={student}
                 onView={() => router.push(`/(admin)/(tabs)/student-profile?id=${student.id}`)}
                 onEdit={() => router.push(`/(admin)/(tabs)/edit-student?id=${student.id}`)}
-                onDelete={() => handleDelete(student.id, `${student.first_name} ${student.last_name}`)}
+                onDelete={() => handleDeleteClick(student.id, `${student.first_name} ${student.last_name}`)}
+                onReactivate={() => handleReactivate(student.id, `${student.first_name} ${student.last_name}`)}
+                reactivating={reactivating === student.id}
               />
             ))
           )}
@@ -443,6 +489,14 @@ export default function StudentsScreen() {
       >
         {snackbar.message}
       </Snackbar>
+
+      <DeleteStudentDialog
+        visible={deleteDialog.visible}
+        studentName={deleteDialog.studentName}
+        onConfirm={handleDeleteConfirm}
+        onCancel={handleDeleteCancel}
+        loading={deleting}
+      />
     </View>
   )
 }
@@ -453,11 +507,15 @@ function StudentCard({
   onView,
   onEdit,
   onDelete,
+  onReactivate,
+  reactivating,
 }: {
   student: Student
   onView: () => void
   onEdit: () => void
   onDelete: () => void
+  onReactivate: () => void
+  reactivating?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -559,15 +617,29 @@ function StudentCard({
               <Button mode="outlined" onPress={onEdit} style={styles.actionButton} icon="pencil">
                 Edit
               </Button>
-              <Button
-                mode="outlined"
-                onPress={onDelete}
-                textColor="#7B2CBF"
-                style={styles.actionButton}
-                icon="delete"
-              >
-                Delete
-              </Button>
+              {!student.is_active ? (
+                <Button
+                  mode="contained"
+                  onPress={onReactivate}
+                  disabled={reactivating}
+                  loading={reactivating}
+                  buttonColor="#10B981"
+                  style={styles.actionButton}
+                  icon="check-circle"
+                >
+                  Reactivate
+                </Button>
+              ) : (
+                <Button
+                  mode="outlined"
+                  onPress={onDelete}
+                  textColor="#EF4444"
+                  style={styles.actionButton}
+                  icon="delete"
+                >
+                  Delete
+                </Button>
+              )}
             </View>
           </View>
         )}

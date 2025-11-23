@@ -58,32 +58,61 @@ export interface UpdateBranchData {
 
 /**
  * Generate branch code if not provided
+ * Includes retry logic to handle race conditions
  */
-async function generateBranchCode(): Promise<string> {
-  // Get the latest branch code
-  const { data, error } = await supabase
-    .from('branches')
-    .select('code')
-    .not('code', 'is', null)
-    .like('code', 'BR%')
-    .order('created_at', { ascending: false })
-    .limit(1)
+async function generateBranchCode(maxRetries: number = 3): Promise<string> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    // Get the latest branch code
+    const { data, error } = await supabase
+      .from('branches')
+      .select('code')
+      .not('code', 'is', null)
+      .like('code', 'BR%')
+      .order('created_at', { ascending: false })
+      .limit(1)
 
-  if (error) {
-    logger.warn('Error fetching latest branch code', { error: error.message })
-  }
+    if (error) {
+      logger.warn('Error fetching latest branch code', { error: error.message })
+      // On last attempt, return default
+      if (attempt === maxRetries - 1) {
+        return 'BR001'
+      }
+      continue
+    }
 
-  if (data && data.length > 0 && data[0].code) {
-    // Extract number from code (e.g., "BR001" -> 1)
-    const match = data[0].code.match(/BR(\d+)/)
-    if (match) {
-      const nextNum = parseInt(match[1]) + 1
-      return `BR${String(nextNum).padStart(3, '0')}`
+    let nextCode = 'BR001'
+    if (data && data.length > 0 && data[0].code) {
+      // Extract number from code (e.g., "BR001" -> 1)
+      const match = data[0].code.match(/BR(\d+)/)
+      if (match) {
+        const nextNum = parseInt(match[1]) + 1
+        nextCode = `BR${String(nextNum).padStart(3, '0')}`
+      }
+    }
+
+    // Verify code doesn't already exist (race condition check)
+    const { data: existingBranch } = await supabase
+      .from('branches')
+      .select('id')
+      .eq('code', nextCode)
+      .maybeSingle()
+
+    if (!existingBranch) {
+      // Code is available
+      return nextCode
+    }
+
+    // Code exists, try again with next number
+    if (attempt < maxRetries - 1) {
+      logger.warn('Branch code collision detected, retrying', { code: nextCode, attempt: attempt + 1 })
+      // Small delay to avoid tight loop
+      await new Promise(resolve => setTimeout(resolve, 100))
     }
   }
 
-  // Default to BR001 if no branches exist
-  return 'BR001'
+  // Fallback: Generate timestamp-based code if all retries fail
+  const timestamp = Date.now().toString().slice(-6)
+  return `BR${timestamp}`
 }
 
 /**
@@ -382,6 +411,33 @@ export async function createBranch(
   createdById: string
 ): Promise<{ branch: Branch | null; error: null } | { branch: null; error: Error }> {
   try {
+    // Verify creator is super_admin
+    const { getProfileByUserId } = await import('./profiles')
+    const profileResult = await getProfileByUserId(createdById)
+    
+    if (profileResult.error || !profileResult.profile) {
+      logger.error('Error verifying creator profile', profileResult.error || new Error('Profile not found'))
+      return { branch: null, error: new Error('Failed to verify user permissions') }
+    }
+
+    if (profileResult.profile.role !== 'super_admin') {
+      logger.error('Unauthorized branch creation attempt', new Error(`User ${createdById} is not super_admin`))
+      return { branch: null, error: new Error('Only super admins can create branches') }
+    }
+
+    // Check for duplicate branch name (case-insensitive)
+    const trimmedName = data.name.trim()
+    const { data: existingBranch } = await supabase
+      .from('branches')
+      .select('id')
+      .ilike('name', trimmedName)
+      .maybeSingle()
+
+    if (existingBranch) {
+      logger.warn('Duplicate branch name detected', { name: trimmedName })
+      return { branch: null, error: new Error('A branch with this name already exists') }
+    }
+
     // Generate code if not provided
     const branchCode = await generateBranchCode()
 
@@ -389,7 +445,7 @@ export async function createBranch(
     const { data: branchData, error: branchError } = await supabase
       .from('branches')
       .insert({
-        name: data.name.trim(),
+        name: trimmedName,
         code: branchCode,
         address: data.address?.trim() || null,
         phone: data.phone?.trim() || null,
@@ -402,6 +458,63 @@ export async function createBranch(
 
     if (branchError) {
       logger.error('Error creating branch', branchError as Error)
+      // Check if it's a duplicate code error
+      if (branchError.code === '23505' || branchError.message.includes('duplicate') || branchError.message.includes('unique')) {
+        // Retry with new code
+        const retryCode = await generateBranchCode()
+        const { data: retryData, error: retryError } = await supabase
+          .from('branches')
+          .insert({
+            name: trimmedName,
+            code: retryCode,
+            address: data.address?.trim() || null,
+            phone: data.phone?.trim() || null,
+            email: data.email?.trim() || null,
+            status: 'active',
+            created_by_id: createdById,
+          })
+          .select()
+          .single()
+
+        if (retryError) {
+          logger.error('Error creating branch on retry', retryError as Error)
+          return { branch: null, error: new Error(retryError.message) }
+        }
+
+        const retryBranch = retryData as Branch
+        // Log audit trail
+        await logBranchAudit(
+          retryBranch.id,
+          'create',
+          null,
+          retryBranch,
+          createdById
+        )
+
+        // Assign admin if requested
+        if (data.assignAdmin && data.adminEmail && data.adminName) {
+          const adminResult = await assignAdminToBranch(
+            retryBranch.id,
+            data.adminEmail,
+            data.adminName,
+            {
+              phone: data.adminPhone,
+              address: data.adminAddress,
+              qualifications: data.adminQualifications,
+              experience: data.adminExperience,
+              specialization: data.adminSpecialization,
+            },
+            data.sendEmail ?? true
+          )
+
+          if (adminResult.error) {
+            logger.warn('Branch created but admin assignment failed', adminResult.error)
+          }
+        }
+
+        logger.info('Branch created successfully (after retry)', { branchId: retryBranch.id, name: retryBranch.name })
+        return { branch: retryBranch, error: null }
+      }
       return { branch: null, error: new Error(branchError.message) }
     }
 
@@ -462,6 +575,22 @@ export async function updateBranch(
     const oldBranch = await getBranchById(branchId)
     const oldValues = oldBranch.branch ? { ...oldBranch.branch } : null
 
+    // Check for duplicate branch name if name is being updated
+    if (updates.name !== undefined) {
+      const trimmedName = updates.name.trim()
+      const { data: existingBranch } = await supabase
+        .from('branches')
+        .select('id')
+        .ilike('name', trimmedName)
+        .neq('id', branchId) // Exclude current branch
+        .maybeSingle()
+
+      if (existingBranch) {
+        logger.warn('Duplicate branch name detected on update', { name: trimmedName, branchId })
+        return { branch: null, error: new Error('A branch with this name already exists') }
+      }
+    }
+
     const updateData: any = {}
     if (updates.name !== undefined) updateData.name = updates.name.trim()
     if (updates.address !== undefined) updateData.address = updates.address?.trim() || null
@@ -508,6 +637,29 @@ export async function updateBranch(
  */
 export async function deleteBranch(branchId: string, deletedBy: string): Promise<{ success: boolean; error: null } | { success: false; error: Error }> {
   try {
+    // Check if service role key is available
+    const { supabaseAdmin } = await import('./supabase')
+    if (!supabaseAdmin) {
+      return {
+        success: false,
+        error: new Error('Service role key not configured'),
+      }
+    }
+
+    // Verify deleter is super_admin
+    const { getProfileByUserId } = await import('./profiles')
+    const profileResult = await getProfileByUserId(deletedBy)
+    
+    if (profileResult.error || !profileResult.profile) {
+      logger.error('Error verifying deleter profile', profileResult.error || new Error('Profile not found'))
+      return { success: false, error: new Error('Failed to verify user permissions') }
+    }
+
+    if (profileResult.profile.role !== 'super_admin') {
+      logger.warn('Unauthorized branch deletion attempt', { deletedBy, role: profileResult.profile.role })
+      return { success: false, error: new Error('Only super admins can delete branches') }
+    }
+
     // Get branch details for audit log
     const branch = await getBranchById(branchId)
     const oldValues = branch.branch ? { ...branch.branch } : null
@@ -521,10 +673,20 @@ export async function deleteBranch(branchId: string, deletedBy: string): Promise
 
     if (studentsError) {
       logger.error('Error checking branch students', studentsError as Error)
+      return {
+        success: false,
+        error: new Error('Failed to verify branch students. Cannot delete branch. Please try again.'),
+      }
     }
 
     // If branch has students, soft delete (set status to inactive)
     if (students && students.length > 0) {
+      // Get student count for warning message
+      const { count: studentCount } = await supabase
+        .from('students')
+        .select('id', { count: 'exact', head: true })
+        .eq('branch_id', branchId)
+
       const { error } = await supabase
         .from('branches')
         .update({ status: 'inactive' })
@@ -540,11 +702,15 @@ export async function deleteBranch(branchId: string, deletedBy: string): Promise
         branchId,
         'delete',
         oldValues,
-        { status: 'inactive' },
+        { status: 'inactive', studentCount: studentCount || 0 },
         deletedBy
       )
 
-      logger.info('Branch soft deleted (set to inactive)', { branchId })
+      logger.info('Branch soft deleted (set to inactive)', { 
+        branchId, 
+        studentCount: studentCount || 0,
+        message: `Branch has ${studentCount || 0} student(s) - set to inactive instead of deleting`
+      })
       return { success: true, error: null }
     }
 
@@ -835,16 +1001,32 @@ export async function assignAdminToBranch(
     // Send appropriate email via web app (if requested)
     if (sendEmail) {
       try {
-        const emailApiUrl = process.env.EXPO_PUBLIC_EMAIL_API_URL || 'https://your-vercel-app.vercel.app'
-        let emailEndpoint = '/api/email/send-admin-welcome'
-        let emailType = 'admin_welcome'
+        const emailApiUrl = process.env.EXPO_PUBLIC_EMAIL_API_URL
         
-        if (isReused) {
-          emailEndpoint = '/api/email/send-admin-assignment'
-          emailType = 'admin_assignment'
-        }
+        if (!emailApiUrl || emailApiUrl === 'https://your-vercel-app.vercel.app') {
+          logger.warn('Email API URL not configured, skipping email send', {
+            email: normalizedEmail,
+            branchId,
+          })
+          // Log email as failed due to missing configuration
+          await logEmail(
+            normalizedEmail,
+            isReused ? `Branch Assignment - ${branch.branch.name}` : `Welcome as Branch Admin - ${branch.branch.name}`,
+            '',
+            isReused ? 'admin_assignment' : 'admin_welcome',
+            'failed',
+            'Email API URL not configured. Please set EXPO_PUBLIC_EMAIL_API_URL in environment variables.'
+          )
+        } else {
+          let emailEndpoint = '/api/email/send-admin-welcome'
+          let emailType = 'admin_welcome'
+          
+          if (isReused) {
+            emailEndpoint = '/api/email/send-admin-assignment'
+            emailType = 'admin_assignment'
+          }
 
-        const emailResponse = await fetch(`${emailApiUrl}${emailEndpoint}`, {
+          const emailResponse = await fetch(`${emailApiUrl}${emailEndpoint}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -855,30 +1037,30 @@ export async function assignAdminToBranch(
             password,
             branchName: branch.branch.name,
             branchCode: branch.branch.code,
-          }),
-        })
+          })
 
-        const emailBody = `Welcome to ${branch.branch.name}. Your login credentials: Email: ${normalizedEmail}, Password: ${password}`
+          const emailBody = `Welcome to ${branch.branch.name}. Your login credentials: Email: ${normalizedEmail}, Password: ${password}`
 
-        if (emailResponse.ok) {
-          await logEmail(
-            normalizedEmail,
-            isReused ? `Branch Assignment - ${branch.branch.name}` : `Welcome as Branch Admin - ${branch.branch.name}`,
-            emailBody,
-            emailType,
-            'sent'
-          )
-        } else {
-          const errorText = await emailResponse.text()
-          await logEmail(
-            normalizedEmail,
-            isReused ? `Branch Assignment - ${branch.branch.name}` : `Welcome as Branch Admin - ${branch.branch.name}`,
-            emailBody,
-            emailType,
-            'failed',
-            errorText
-          )
-          logger.warn('Failed to send email', new Error('Email API returned error'))
+          if (emailResponse.ok) {
+            await logEmail(
+              normalizedEmail,
+              isReused ? `Branch Assignment - ${branch.branch.name}` : `Welcome as Branch Admin - ${branch.branch.name}`,
+              emailBody,
+              emailType,
+              'sent'
+            )
+          } else {
+            const errorText = await emailResponse.text()
+            await logEmail(
+              normalizedEmail,
+              isReused ? `Branch Assignment - ${branch.branch.name}` : `Welcome as Branch Admin - ${branch.branch.name}`,
+              emailBody,
+              emailType,
+              'failed',
+              errorText
+            )
+            logger.warn('Failed to send email', new Error('Email API returned error'))
+          }
         }
       } catch (emailError) {
         await logEmail(
@@ -961,8 +1143,23 @@ export async function changeBranchAdmin(
         // Send removal email if requested
         if (sendEmails && oldAdmin.email) {
           try {
-            const emailApiUrl = process.env.EXPO_PUBLIC_EMAIL_API_URL || 'https://your-vercel-app.vercel.app'
-            const emailResponse = await fetch(`${emailApiUrl}/api/email/send-admin-removed`, {
+            const emailApiUrl = process.env.EXPO_PUBLIC_EMAIL_API_URL
+            
+            if (!emailApiUrl || emailApiUrl === 'https://your-vercel-app.vercel.app') {
+              logger.warn('Email API URL not configured, skipping removal email', {
+                email: oldAdmin.email,
+                branchId,
+              })
+              await logEmail(
+                oldAdmin.email,
+                `Branch Admin Change Notification - ${branch.branch.name}`,
+                '',
+                'admin_removed',
+                'failed',
+                'Email API URL not configured. Please set EXPO_PUBLIC_EMAIL_API_URL in environment variables.'
+              )
+            } else {
+              const emailResponse = await fetch(`${emailApiUrl}/api/email/send-admin-removed`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -972,27 +1169,27 @@ export async function changeBranchAdmin(
                 name: oldAdmin.name,
                 branchName: branch.branch.name,
                 branchCode: branch.branch.code,
-              }),
-            })
+              })
 
-            const emailBody = `You have been removed as admin from ${branch.branch.name} branch.`
-            if (emailResponse.ok) {
-              await logEmail(
-                oldAdmin.email,
-                `Branch Admin Change Notification - ${branch.branch.name}`,
-                emailBody,
-                'admin_removed',
-                'sent'
-              )
-            } else {
-              await logEmail(
-                oldAdmin.email,
-                `Branch Admin Change Notification - ${branch.branch.name}`,
-                emailBody,
-                'admin_removed',
-                'failed',
-                await emailResponse.text()
-              )
+              const emailBody = `You have been removed as admin from ${branch.branch.name} branch.`
+              if (emailResponse.ok) {
+                await logEmail(
+                  oldAdmin.email,
+                  `Branch Admin Change Notification - ${branch.branch.name}`,
+                  emailBody,
+                  'admin_removed',
+                  'sent'
+                )
+              } else {
+                await logEmail(
+                  oldAdmin.email,
+                  `Branch Admin Change Notification - ${branch.branch.name}`,
+                  emailBody,
+                  'admin_removed',
+                  'failed',
+                  await emailResponse.text()
+                )
+              }
             }
           } catch (emailError) {
             await logEmail(
