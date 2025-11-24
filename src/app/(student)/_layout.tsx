@@ -94,7 +94,7 @@ export default function StudentLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      {/* Add more student screens here as needed */}
+      <Stack.Screen name="create-leave-inform" options={{ headerShown: false }} />
     </Stack>
   )
 }

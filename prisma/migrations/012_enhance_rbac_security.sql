@@ -138,3 +138,4 @@ CREATE TRIGGER update_profiles_updated_at_trigger
 -- 4. Created trigger to log role changes
 -- 5. Added updated_at trigger for profiles
 
+

@@ -27,3 +27,4 @@ EXPO_PUBLIC_SENTRY_DSN=your_sentry_dsn
 - Never commit `.env.local` to version control
 - The service role key is only needed for admin operations that require bypassing RLS
 
+

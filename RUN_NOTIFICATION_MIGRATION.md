@@ -74,3 +74,4 @@ You should see all 3 tables listed.
 - ✅ Storage bucket `notification-images` exists and is public
 - ✅ You can create notifications without errors
 
+

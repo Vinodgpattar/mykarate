@@ -189,3 +189,4 @@ Get your project ID from: https://expo.dev/accounts/[your-account]/projects/[you
 - Push tokens are automatically registered on login
 - Read count is automatically updated via database trigger
 
+

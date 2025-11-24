@@ -67,3 +67,4 @@ USING (
 -- 3. File size limit: Recommended 5MB
 -- 4. Allowed MIME types: image/jpeg, image/png, image/jpg
 
+

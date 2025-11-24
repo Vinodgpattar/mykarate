@@ -29,6 +29,15 @@ export default function StudentTabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="inform-leave"
+        options={{
+          title: 'Inform Leave',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="calendar-clock" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
@@ -45,6 +54,12 @@ export default function StudentTabsLayout() {
       />
       <Tabs.Screen
         name="complete-profile"
+        options={{
+          href: null, // Hide from tabs
+        }}
+      />
+      <Tabs.Screen
+        name="create-leave-inform"
         options={{
           href: null, // Hide from tabs
         }}

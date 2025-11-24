@@ -429,3 +429,4 @@ const styles = StyleSheet.create({
     backgroundColor: '#7B2CBF',
   },
 })
+
