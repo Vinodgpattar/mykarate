@@ -32,8 +32,14 @@
     "web": {},
     "plugins": [
       "expo-router",
-      "expo-camera",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app accesses your photos to let you share them.",
+          "cameraPermission": "The app accesses your camera to let you take photos."
+        }
+      ]
     ],
     "scheme": "karate-dojo",
     "extra": {
