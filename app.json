@@ -5,6 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
     "splash": {
       "image": "./assets/dojo-logo.jpg",
       "backgroundColor": "#FFF8E7",
@@ -19,9 +20,14 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#DC2626"
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#7B2CBF"
       },
-      "package": "com.karatedojo.mobile"
+      "package": "com.karatedojo.mobile",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {},
     "plugins": [
@@ -29,9 +35,12 @@
       "expo-camera",
       "expo-notifications"
     ],
-    "scheme": "karate-dojo"
+    "scheme": "karate-dojo",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "e8aab9ff-c804-4028-bcbc-3f1621c8f859"
+      }
+    }
   }
 }
-
-
-
