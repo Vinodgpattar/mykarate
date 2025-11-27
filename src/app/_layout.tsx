@@ -10,6 +10,8 @@ import { initSentry } from '@/lib/sentry'
 import { lightTheme } from '@/lib/theme'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
+import { hasConfigError, configError } from '@/lib/supabase'
+import { ConfigErrorScreen } from '@/components/ConfigErrorScreen'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,6 +24,11 @@ const queryClient = new QueryClient({
 
 // Inner layout that has access to both providers
 function InnerLayout() {
+  // Check for configuration errors first
+  if (hasConfigError && configError) {
+    return <ConfigErrorScreen error={configError} />
+  }
+
   return (
     <ErrorBoundary>
       <AuthProvider>
