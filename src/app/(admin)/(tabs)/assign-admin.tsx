@@ -438,7 +438,7 @@ export default function AssignAdminScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#FFF8E7',
   },
   scrollView: {
     flex: 1,
@@ -552,7 +552,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#FFF8E7',
   },
   loadingText: {
     marginTop: 16,

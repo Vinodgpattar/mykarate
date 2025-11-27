@@ -13,37 +13,50 @@ export default function StudentTabsLayout() {
       <Tabs.Screen
         name="dashboard"
         options={{
-          title: 'Dashboard',
+          title: 'Home',
           tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="view-dashboard" size={size} color={color} />
+            <MaterialCommunityIcons name="home" size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="notifications"
+        name="my-attendance"
         options={{
-          title: 'Notifications',
+          title: 'Attendance',
           tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="bell" size={size} color={color} />
+            <MaterialCommunityIcons name="clipboard-check" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="my-fees"
+        options={{
+          title: 'Fees',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="cash" size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="inform-leave"
         options={{
-          title: 'Inform Leave',
+          title: 'Leave',
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="calendar-clock" size={size} color={color} />
           ),
         }}
       />
+      {/* Hidden screens - accessible via header or navigation */}
+      <Tabs.Screen
+        name="notifications"
+        options={{
+          href: null, // Hide from tabs - accessible via header bell icon
+        }}
+      />
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="account" size={size} color={color} />
-          ),
+          href: null, // Hide from tabs - accessible via header profile icon
         }}
       />
       <Tabs.Screen
@@ -60,6 +73,12 @@ export default function StudentTabsLayout() {
       />
       <Tabs.Screen
         name="create-leave-inform"
+        options={{
+          href: null, // Hide from tabs
+        }}
+      />
+      <Tabs.Screen
+        name="notification-details"
         options={{
           href: null, // Hide from tabs
         }}

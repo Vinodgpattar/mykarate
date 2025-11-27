@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react'
-import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Image } from 'react-native'
-import { Text, Card, Button, Searchbar, Chip, ActivityIndicator, Menu, Divider } from 'react-native-paper'
-import { useRouter } from 'expo-router'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Image, Alert } from 'react-native'
+import { Text, Button, Searchbar, Chip, ActivityIndicator, FAB, Card } from 'react-native-paper'
+import { LinearGradient } from 'expo-linear-gradient'
+import { useRouter, useFocusEffect } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
-import { format, formatDistanceToNow } from 'date-fns'
+import { formatDistanceToNow } from 'date-fns'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { getNotifications, deleteNotification, type Notification, type NotificationType } from '@/lib/admin-notifications'
 import { logger } from '@/lib/logger'
-import { Alert } from 'react-native'
+import { AdminHeader } from '@/components/admin/AdminHeader'
+import { COLORS, SPACING, RADIUS, ELEVATION } from '@/lib/design-system'
 
 const NOTIFICATION_TYPES: NotificationType[] = ['announcement', 'alert', 'reminder', 'achievement', 'event', 'payment', 'class', 'system']
 
@@ -22,15 +24,15 @@ const TYPE_ICONS: Record<NotificationType, string> = {
   system: 'cog',
 }
 
-const TYPE_COLORS: Record<NotificationType, string> = {
-  announcement: '#6366F1',
-  alert: '#EF4444',
-  reminder: '#F59E0B',
-  achievement: '#10B981',
-  event: '#8B5CF6',
-  payment: '#06B6D4',
-  class: '#7B2CBF',
-  system: '#6B7280',
+const TYPE_COLORS: Record<NotificationType, string[]> = {
+  announcement: ['#6366F1', '#4F46E5'],
+  alert: ['#EF4444', '#DC2626'],
+  reminder: ['#F59E0B', '#D97706'],
+  achievement: ['#10B981', '#059669'],
+  event: ['#8B5CF6', '#7C3AED'],
+  payment: ['#06B6D4', '#0891B2'],
+  class: ['#7B2CBF', '#6D28D9'],
+  system: ['#6B7280', '#4B5563'],
 }
 
 export default function AdminNotificationsScreen() {
@@ -46,9 +48,32 @@ export default function AdminNotificationsScreen() {
   const [hasMore, setHasMore] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
+  // Refs to prevent unnecessary reloads
+  const lastLoadTimeRef = useRef<number>(0)
+  const isLoadingRef = useRef(false)
+
   useEffect(() => {
     loadData()
   }, [selectedType, searchQuery])
+
+  // Auto-refresh when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      // Always refresh when screen comes into focus (e.g., after creating a notification)
+      // Only skip if currently loading to prevent duplicate requests
+      if (isLoadingRef.current) {
+        return
+      }
+
+      // Reset page and reload data
+      setPage(1)
+      isLoadingRef.current = true
+      loadData(1).finally(() => {
+        isLoadingRef.current = false
+        lastLoadTimeRef.current = Date.now()
+      })
+    }, [selectedType, searchQuery])
+  )
 
   const loadData = async (pageNum: number = 1) => {
     try {
@@ -78,6 +103,7 @@ export default function AdminNotificationsScreen() {
     } finally {
       setLoading(false)
       setRefreshing(false)
+      lastLoadTimeRef.current = Date.now()
     }
   }
 
@@ -138,21 +164,7 @@ export default function AdminNotificationsScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <Text variant="headlineSmall" style={styles.headerTitle}>
-          Notifications
-        </Text>
-        <Button
-          mode="contained"
-          icon="plus"
-          onPress={() => router.push('/(admin)/(tabs)/create-notification')}
-          style={styles.createButton}
-          buttonColor="#7B2CBF"
-        >
-          Create
-        </Button>
-      </View>
+      <AdminHeader title="Notifications" />
 
       {/* Search and Filters */}
       <View style={styles.filtersContainer}>
@@ -189,17 +201,23 @@ export default function AdminNotificationsScreen() {
 
       {/* Statistics */}
       <View style={styles.statsContainer}>
-        <Card style={styles.statCard}>
-          <Card.Content style={styles.statContent}>
-            <MaterialCommunityIcons name="send" size={24} color="#6366F1" />
-            <Text variant="headlineSmall" style={styles.statNumber}>
-              {total}
-            </Text>
-            <Text variant="bodySmall" style={styles.statLabel}>
-              Total Sent
-            </Text>
-          </Card.Content>
-        </Card>
+        <View style={styles.statCard}>
+          <View style={styles.cardContainer}>
+            <View style={styles.cardContent}>
+              <View style={styles.iconContainer}>
+                <MaterialCommunityIcons name="send" size={18} color="#6366F1" />
+              </View>
+              <View style={styles.statInfo}>
+                <Text variant="headlineSmall" style={styles.statValue}>
+                  {total}
+                </Text>
+                <Text variant="labelSmall" style={styles.statLabel}>
+                  Total Sent
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
       </View>
 
       {/* Notifications List */}
@@ -236,64 +254,80 @@ export default function AdminNotificationsScreen() {
             </Card.Content>
           </Card>
         ) : (
-          filteredNotifications.map((notification) => (
-            <TouchableOpacity
-              key={notification.id}
-              onPress={() => router.push(`/(admin)/(tabs)/notification-details?id=${notification.id}`)}
-              activeOpacity={0.7}
-            >
-              <Card style={styles.notificationCard} mode="outlined">
-                <Card.Content style={styles.cardContent}>
-                  <View style={styles.notificationHeader}>
-                    <View style={[styles.notificationIcon, { backgroundColor: `${TYPE_COLORS[notification.type]}15` }]}>
-                      <MaterialCommunityIcons
-                        name={TYPE_ICONS[notification.type]}
-                        size={18}
-                        color={TYPE_COLORS[notification.type]}
-                      />
-                    </View>
-                    <View style={styles.notificationContent}>
-                      <View style={styles.titleRow}>
-                        <Text variant="bodyLarge" style={styles.notificationTitle} numberOfLines={1}>
-                          {notification.title}
-                        </Text>
-                        {notification.imageUrl && (
-                          <MaterialCommunityIcons name="image" size={16} color="#9CA3AF" style={styles.imageIndicator} />
-                        )}
+          filteredNotifications.map((notification) => {
+            const icon = TYPE_ICONS[notification.type]
+            const colors = TYPE_COLORS[notification.type] || ['#7B2CBF', '#6D28D9']
+            const timeAgo = notification.createdAt && !isNaN(new Date(notification.createdAt).getTime())
+              ? formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })
+              : 'Recently'
+
+            return (
+              <TouchableOpacity
+                key={notification.id}
+                onPress={() => router.push(`/(admin)/(tabs)/notification-details?id=${notification.id}`)}
+                activeOpacity={0.8}
+                style={styles.notificationContainer}
+              >
+                <LinearGradient
+                  colors={colors}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.notificationBanner}
+                >
+                  <View style={styles.bannerContent}>
+                    <View style={styles.bannerLeft}>
+                      <View style={styles.iconContainer}>
+                        <MaterialCommunityIcons name={icon as any} size={24} color="#fff" />
                       </View>
-                      <View style={styles.metaRow}>
-                        <Text variant="bodySmall" style={styles.notificationTime}>
-                          {notification.createdAt && !isNaN(new Date(notification.createdAt).getTime()) 
-                            ? formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })
-                            : 'Date unavailable'}
+                      <View style={styles.textContainer}>
+                        <View style={styles.titleRow}>
+                          <Text variant="titleMedium" style={styles.title} numberOfLines={2}>
+                            {notification.title}
+                          </Text>
+                          <TouchableOpacity
+                            onPress={(e) => {
+                              e.stopPropagation()
+                              handleDelete(notification.id, notification.title)
+                            }}
+                            disabled={deletingId === notification.id}
+                            style={styles.deleteButton}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          >
+                            {deletingId === notification.id ? (
+                              <ActivityIndicator size="small" color="#fff" />
+                            ) : (
+                              <MaterialCommunityIcons name="delete-outline" size={20} color="#fff" />
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                        <Text variant="bodyMedium" style={styles.message} numberOfLines={3}>
+                          {notification.message}
                         </Text>
-                        <Text variant="bodySmall" style={styles.statsText}>
-                          {notification.readCount}/{notification.totalSent} read
-                        </Text>
+                        <View style={styles.metaRow}>
+                          <Text variant="labelSmall" style={styles.time}>
+                            {timeAgo}
+                          </Text>
+                          <Text variant="labelSmall" style={styles.statsText}>
+                            {notification.readCount}/{notification.totalSent} read
+                          </Text>
+                        </View>
                       </View>
                     </View>
-                    <TouchableOpacity
-                      onPress={(e) => {
-                        e.stopPropagation()
-                        handleDelete(notification.id, notification.title)
-                      }}
-                      disabled={deletingId === notification.id}
-                      style={styles.deleteButton}
-                    >
-                      {deletingId === notification.id ? (
-                        <ActivityIndicator size="small" color="#EF4444" />
-                      ) : (
-                        <MaterialCommunityIcons name="delete-outline" size={18} color="#EF4444" />
+                    <View style={styles.bannerRight}>
+                      {notification.imageUrl && (
+                        <Image
+                          source={{ uri: notification.imageUrl }}
+                          style={styles.thumbnail}
+                          resizeMode="cover"
+                        />
                       )}
-                    </TouchableOpacity>
+                      <MaterialCommunityIcons name="chevron-right" size={24} color="#fff" />
+                    </View>
                   </View>
-                  <Text variant="bodySmall" style={styles.notificationBody} numberOfLines={2}>
-                    {notification.message}
-                  </Text>
-                </Card.Content>
-              </Card>
-            </TouchableOpacity>
-          ))
+                </LinearGradient>
+              </TouchableOpacity>
+            )
+          })
         )}
 
         {hasMore && !loading && filteredNotifications.length > 0 && (
@@ -304,6 +338,14 @@ export default function AdminNotificationsScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Floating Action Button */}
+      <FAB
+        icon="plus"
+        style={styles.fab}
+        onPress={() => router.push('/(admin)/(tabs)/create-notification')}
+        label="Create"
+      />
     </View>
   )
 }
@@ -311,168 +353,211 @@ export default function AdminNotificationsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
-  },
-  header: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  headerTitle: {
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  createButton: {
-    borderRadius: 8,
+    backgroundColor: COLORS.background,
   },
   filtersContainer: {
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 12,
+    backgroundColor: COLORS.surface,
+    paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: COLORS.border,
   },
   searchbar: {
-    marginHorizontal: 16,
-    marginBottom: 12,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
     elevation: 0,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: COLORS.borderLight,
   },
   chipsContainer: {
-    paddingHorizontal: 16,
+    paddingHorizontal: SPACING.lg,
   },
   chip: {
-    marginRight: 8,
+    marginRight: SPACING.sm,
   },
   statsContainer: {
-    flexDirection: 'row',
-    padding: 16,
-    gap: 12,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
   },
   statCard: {
-    flex: 1,
-    elevation: 2,
-    borderRadius: 12,
+    borderRadius: RADIUS.sm,
+    overflow: 'hidden',
   },
-  statContent: {
-    padding: 16,
+  cardContainer: {
+    backgroundColor: '#F8F9FF',
+    borderRadius: RADIUS.sm,
+    padding: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  cardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  iconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 6,
+    backgroundColor: '#EEF2FF',
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  statNumber: {
-    fontWeight: 'bold',
+  statInfo: {
+    flex: 1,
+  },
+  statValue: {
+    fontWeight: '700',
+    fontSize: 20,
+    lineHeight: 24,
     color: '#6366F1',
-    marginTop: 8,
+    marginBottom: 1,
   },
   statLabel: {
-    color: '#6B7280',
-    marginTop: 4,
+    color: COLORS.textSecondary,
+    fontSize: 10,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
-    paddingBottom: 80,
+    padding: SPACING.lg,
+    paddingBottom: 100,
+  },
+  bottomPadding: {
+    height: SPACING.xl,
   },
   loadingContainer: {
-    padding: 48,
+    padding: SPACING.xxl,
     alignItems: 'center',
   },
   loadingText: {
-    marginTop: 16,
-    color: '#6B7280',
+    marginTop: SPACING.lg,
+    color: COLORS.textSecondary,
   },
   emptyCard: {
-    elevation: 2,
-    borderRadius: 12,
-    marginTop: 48,
+    elevation: ELEVATION.sm,
+    borderRadius: RADIUS.md,
+    marginTop: SPACING.xxl,
+    backgroundColor: COLORS.surface,
   },
   emptyContent: {
-    padding: 48,
+    padding: SPACING.xxl,
     alignItems: 'center',
   },
   emptyTitle: {
-    marginTop: 16,
-    color: '#1F2937',
+    marginTop: SPACING.lg,
+    color: COLORS.textPrimary,
     fontWeight: '600',
   },
   emptyText: {
-    marginTop: 8,
-    color: '#6B7280',
+    marginTop: SPACING.sm,
+    color: COLORS.textSecondary,
     textAlign: 'center',
   },
-  notificationCard: {
-    marginBottom: 8,
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    elevation: 1,
+  // Notification Banner Styles (matching student design)
+  notificationContainer: {
+    marginBottom: SPACING.md,
   },
-  cardContent: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+  notificationBanner: {
+    borderRadius: RADIUS.md,
+    elevation: ELEVATION.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    overflow: 'hidden',
   },
-  notificationHeader: {
+  bannerContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 6,
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
   },
-  notificationIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  bannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.md,
+    flex: 1,
+  },
+  iconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  notificationContent: {
+  textContainer: {
     flex: 1,
+    gap: SPACING.xs,
   },
   titleRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: SPACING.xs,
     marginBottom: 2,
   },
-  notificationTitle: {
-    fontWeight: '600',
-    color: '#1F2937',
-    fontSize: 15,
+  title: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
+    lineHeight: 22,
     flex: 1,
   },
-  imageIndicator: {
-    marginLeft: 4,
+  message: {
+    color: '#fff',
+    opacity: 0.95,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: SPACING.sm,
+    marginTop: SPACING.xs,
   },
-  notificationTime: {
-    color: '#6B7280',
+  time: {
+    color: '#fff',
+    opacity: 0.85,
     fontSize: 11,
   },
   statsText: {
-    color: '#9CA3AF',
+    color: '#fff',
+    opacity: 0.8,
     fontSize: 11,
   },
-  deleteButton: {
-    padding: 6,
-    justifyContent: 'center',
+  bannerRight: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 4,
+    gap: SPACING.sm,
+    marginLeft: SPACING.md,
   },
-  notificationBody: {
-    color: '#4B5563',
-    lineHeight: 18,
-    fontSize: 13,
+  thumbnail: {
+    width: 60,
+    height: 60,
+    borderRadius: RADIUS.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  deleteButton: {
+    padding: SPACING.xs,
+    borderRadius: RADIUS.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
   loadMoreContainer: {
-    padding: 16,
+    padding: SPACING.lg,
     alignItems: 'center',
+  },
+  fab: {
+    position: 'absolute',
+    right: SPACING.lg,
+    bottom: 80,
+    backgroundColor: COLORS.brandPurple,
   },
 })
 

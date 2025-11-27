@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { View, ActivityIndicator, StyleSheet } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useRouter, useSegments } from 'expo-router'
 import { useAuth } from '@/context/AuthContext'
 import { Text } from 'react-native-paper'
 import { getProfileByUserId } from '@/lib/profiles'
@@ -8,96 +8,101 @@ import { getProfileByUserId } from '@/lib/profiles'
 export default function Index() {
   const { session, loading, signOut } = useAuth()
   const router = useRouter()
+  const segments = useSegments()
   const hasRoutedRef = useRef(false)
+  const routingInProgressRef = useRef(false)
 
-  console.log('Index: Component rendered - loading:', loading, 'hasSession:', !!session)
-
-  // Reset routing flag when session user ID changes
   useEffect(() => {
-    if (session?.user?.id) {
-      console.log('Index: Session user ID changed, resetting routing flag')
-      hasRoutedRef.current = false
+    // Don't route if already routing or loading
+    if (routingInProgressRef.current || loading) {
+      return
     }
-  }, [session?.user?.id])
 
-  useEffect(() => {
-    console.log('Index: useEffect triggered - loading:', loading, 'hasSession:', !!session, 'hasRouted:', hasRoutedRef.current)
+    // Check if we're already on a valid route
+    const isOnPublicRoute = segments[0] === '(public)'
+    const isOnAuthRoute = segments[0] === '(auth)'
+    const isOnAdminRoute = segments[0] === '(admin)'
+    const isOnStudentRoute = segments[0] === '(student)'
     
+    // If we're already on a valid route, don't try to route again
+    if (isOnPublicRoute || isOnAuthRoute || isOnAdminRoute || isOnStudentRoute) {
+      console.log('Index: Already on route:', segments.join('/'), '- skipping routing')
+      return
+    }
+
     // Prevent multiple routing attempts
     if (hasRoutedRef.current) {
-      console.log('Index: Already routed, skipping...')
       return
     }
     
     const checkAuthAndRoute = async () => {
-      if (loading) {
-        console.log('Index: Still loading auth state...')
-        return
-      }
+      routingInProgressRef.current = true
 
-      if (!session) {
-        console.log('Index: No session, routing to login')
-        hasRoutedRef.current = true
-        router.replace('/(auth)/login')
-        return
-      }
+      try {
+        if (!session) {
+          console.log('Index: No session, redirecting to public view')
+          hasRoutedRef.current = true
+          router.replace('/(public)')
+          return
+        }
 
-      // Get role from profiles table
-      if (session.user.id) {
-        console.log('Index: Getting role from profiles table')
-        try {
-          const result = await getProfileByUserId(session.user.id)
-          
-          if (result.error) {
-            console.error('Index: Error fetching profile:', result.error)
+        // Get role from profiles table
+        if (session.user.id) {
+          try {
+            const result = await getProfileByUserId(session.user.id)
+            
+            if (result.error || !result.profile) {
+              console.warn('Index: No profile found - redirecting to login')
+              await signOut()
+              hasRoutedRef.current = true
+              router.replace('/(auth)/login')
+              return
+            }
+
+            const role = result.profile.role
+
+            if (role === 'student') {
+              console.log('Index: Student role confirmed, routing to student dashboard')
+              hasRoutedRef.current = true
+              router.replace('/(student)/(tabs)/dashboard')
+              return
+            }
+
+            if (role === 'admin' || role === 'super_admin') {
+              console.log('Index: Admin role confirmed, routing to admin dashboard')
+              hasRoutedRef.current = true
+              router.replace('/(admin)/(tabs)')
+              return
+            }
+
+            // Unknown role - deny access
+            console.warn('Index: Unknown role - redirecting to login')
             await signOut()
+            hasRoutedRef.current = true
             router.replace('/(auth)/login')
-            return
-          }
-          
-          if (!result.profile) {
-            console.warn('Index: No profile found - denying access')
+          } catch (error) {
+            console.error('Index: Error checking user role:', error)
             await signOut()
+            hasRoutedRef.current = true
             router.replace('/(auth)/login')
-            return
           }
-
-          const role = result.profile.role
-          console.log('Index: Role from profiles:', role)
-
-          if (role === 'student') {
-            console.log('Index: Student role confirmed, routing to student dashboard')
-            hasRoutedRef.current = true
-            router.replace('/(student)/(tabs)/dashboard')
-            return
-          }
-
-          if (role === 'admin' || role === 'super_admin') {
-            console.log('Index: Admin role confirmed, routing to admin dashboard')
-            hasRoutedRef.current = true
-            router.replace('/(admin)/(tabs)')
-            return
-          }
-
-          // Unknown role - deny access
-          console.warn('Index: Unknown role - denying access')
+        } else {
+          console.error('Index: No user ID in session - redirecting to login')
           await signOut()
-          router.replace('/(auth)/login')
-        } catch (error) {
-          console.error('Index: Error checking user role:', error)
-          await signOut()
+          hasRoutedRef.current = true
           router.replace('/(auth)/login')
         }
-      } else {
-        console.error('Index: No user ID in session - invalid session')
-        await signOut()
-        router.replace('/(auth)/login')
+      } catch (error) {
+        console.error('Index: Routing error:', error)
+        routingInProgressRef.current = false
+      } finally {
+        routingInProgressRef.current = false
       }
     }
 
     checkAuthAndRoute()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, loading, signOut])
+  }, [session, loading, segments])
 
   // Show loading screen while checking auth
   return (
@@ -123,5 +128,3 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 })
-
-

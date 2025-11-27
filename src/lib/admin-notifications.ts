@@ -1,6 +1,7 @@
 import { supabase, supabaseAdmin } from './supabase'
 import { logger } from './logger'
 import * as FileSystem from 'expo-file-system/legacy'
+import { compressImage } from './image-compression'
 import * as ImagePicker from 'expo-image-picker'
 import Constants from 'expo-constants'
 
@@ -167,8 +168,17 @@ export async function uploadNotificationImage(imageUri: string, notificationId: 
       }
     }
 
-    // Read file as ArrayBuffer (same pattern as mess-management-mobile)
-    const base64 = await FileSystem.readAsStringAsync(imageUri, {
+    // Compress image before upload
+    logger.info('Compressing notification image before upload...')
+    const { uri: compressedUri, size: compressedSize, originalSize } = await compressImage(imageUri, 'notification')
+    logger.info('Notification image compressed', {
+      originalSize,
+      compressedSize,
+      reduction: `${((1 - compressedSize / originalSize) * 100).toFixed(1)}%`,
+    })
+
+    // Read compressed file as ArrayBuffer
+    const base64 = await FileSystem.readAsStringAsync(compressedUri, {
       encoding: FileSystem.EncodingType.Base64,
     })
 
@@ -254,8 +264,7 @@ export async function pickImageFromGallery(): Promise<{ uri: string | null; erro
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
+      allowsEditing: false,
       quality: 0.8,
     })
 
@@ -291,8 +300,7 @@ export async function takePhotoWithCamera(): Promise<{ uri: string | null; error
 
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
+      allowsEditing: false,
       quality: 0.8,
     })
 

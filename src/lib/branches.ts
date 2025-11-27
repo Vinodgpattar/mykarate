@@ -591,6 +591,34 @@ export async function updateBranch(
       }
     }
 
+    // Prevent setting status to 'inactive' if branch has students
+    if (updates.status === 'inactive') {
+      const { count: studentCount, error: studentsError } = await supabase
+        .from('students')
+        .select('id', { count: 'exact', head: true })
+        .eq('branch_id', branchId)
+
+      if (studentsError) {
+        logger.error('Error checking branch students', studentsError as Error)
+        return {
+          branch: null,
+          error: new Error('Failed to verify branch students. Please try again.'),
+        }
+      }
+
+      if (studentCount && studentCount > 0) {
+        logger.warn('Cannot set branch to inactive with students', { 
+          branchId, 
+          studentCount,
+          message: `Branch has ${studentCount} student(s) and cannot be set to inactive.`
+        })
+        return {
+          branch: null,
+          error: new Error(`This branch has ${studentCount} student(s) and cannot be set to inactive. You can only edit the branch details.`),
+        }
+      }
+    }
+
     const updateData: any = {}
     if (updates.name !== undefined) updateData.name = updates.name.trim()
     if (updates.address !== undefined) updateData.address = updates.address?.trim() || null
@@ -633,7 +661,7 @@ export async function updateBranch(
 }
 
 /**
- * Delete a branch (soft delete by setting status to inactive)
+ * Delete a branch (only if it has no students)
  */
 export async function deleteBranch(branchId: string, deletedBy: string): Promise<{ success: boolean; error: null } | { success: false; error: Error }> {
   try {
@@ -665,11 +693,10 @@ export async function deleteBranch(branchId: string, deletedBy: string): Promise
     const oldValues = branch.branch ? { ...branch.branch } : null
 
     // Check if branch has students
-    const { data: students, error: studentsError } = await supabase
+    const { count: studentCount, error: studentsError } = await supabase
       .from('students')
-      .select('id')
+      .select('id', { count: 'exact', head: true })
       .eq('branch_id', branchId)
-      .limit(1)
 
     if (studentsError) {
       logger.error('Error checking branch students', studentsError as Error)
@@ -679,42 +706,20 @@ export async function deleteBranch(branchId: string, deletedBy: string): Promise
       }
     }
 
-    // If branch has students, soft delete (set status to inactive)
-    if (students && students.length > 0) {
-      // Get student count for warning message
-      const { count: studentCount } = await supabase
-        .from('students')
-        .select('id', { count: 'exact', head: true })
-        .eq('branch_id', branchId)
-
-      const { error } = await supabase
-        .from('branches')
-        .update({ status: 'inactive' })
-        .eq('id', branchId)
-
-      if (error) {
-        logger.error('Error soft deleting branch', error as Error)
-        return { success: false, error: new Error(error.message) }
-      }
-
-      // Log audit trail
-      await logBranchAudit(
-        branchId,
-        'delete',
-        oldValues,
-        { status: 'inactive', studentCount: studentCount || 0 },
-        deletedBy
-      )
-
-      logger.info('Branch soft deleted (set to inactive)', { 
+    // If branch has students, prevent deletion
+    if (studentCount && studentCount > 0) {
+      logger.warn('Cannot delete branch with students', { 
         branchId, 
-        studentCount: studentCount || 0,
-        message: `Branch has ${studentCount || 0} student(s) - set to inactive instead of deleting`
+        studentCount,
+        message: `Branch has ${studentCount} student(s) and cannot be deleted. Please edit branch details instead.`
       })
-      return { success: true, error: null }
+      return {
+        success: false,
+        error: new Error(`This branch has ${studentCount} student(s) and cannot be deleted. You can only edit the branch details.`),
+      }
     }
 
-    // If no students, hard delete
+    // If no students, proceed with hard delete
     const { error } = await supabase
       .from('branches')
       .delete()

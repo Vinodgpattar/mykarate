@@ -9,6 +9,7 @@ import { createNotification, pickImageFromGallery, takePhotoWithCamera, type Not
 import { getBranches, type Branch } from '@/lib/branches'
 import { getStudents, type Student } from '@/lib/students'
 import { logger } from '@/lib/logger'
+import { AdminHeader } from '@/components/admin/AdminHeader'
 
 const NOTIFICATION_TYPES: NotificationType[] = ['announcement', 'alert', 'reminder', 'achievement', 'event', 'payment', 'class', 'system']
 
@@ -209,17 +210,9 @@ export default function CreateNotificationScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={insets.top}>
+      <AdminHeader title="Create Notification" showBackButton />
+
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        {/* Header */}
-        <View style={styles.header}>
-          <Button icon="arrow-left" onPress={() => router.back()} mode="text" textColor="#666">
-            Back
-          </Button>
-          <Text variant="headlineSmall" style={styles.title}>
-            Create Notification
-          </Text>
-          <View style={{ width: 60 }} />
-        </View>
 
         {/* Notification Type */}
         <Card style={styles.card}>
@@ -233,7 +226,13 @@ export default function CreateNotificationScreen() {
               anchor={
                 <Button
                   mode="outlined"
-                  onPress={() => setTypeMenuVisible(true)}
+                  onPress={() => {
+                    if (typeMenuVisible) {
+                      setTypeMenuVisible(false)
+                    } else {
+                      setTimeout(() => setTypeMenuVisible(true), 50)
+                    }
+                  }}
                   style={styles.menuButton}
                   contentStyle={styles.menuButtonContent}
                 >
@@ -364,7 +363,13 @@ export default function CreateNotificationScreen() {
                     anchor={
                       <Button
                         mode="outlined"
-                        onPress={() => setBranchMenuVisible(true)}
+                        onPress={() => {
+                          if (branchMenuVisible) {
+                            setBranchMenuVisible(false)
+                          } else {
+                            setTimeout(() => setBranchMenuVisible(true), 50)
+                          }
+                        }}
                         style={styles.menuButton}
                         contentStyle={styles.menuButtonContent}
                       >
@@ -454,24 +459,13 @@ export default function CreateNotificationScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#FFF8E7',
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     padding: 16,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    paddingTop: 8,
-  },
-  title: {
-    fontWeight: 'bold',
-    color: '#1a1a1a',
   },
   card: {
     elevation: 2,
@@ -497,10 +491,11 @@ const styles = StyleSheet.create({
   },
   image: {
     width: '100%',
-    height: 200,
+    height: 300,
     borderRadius: 12,
     marginBottom: 12,
-    resizeMode: 'cover',
+    resizeMode: 'contain',
+    backgroundColor: '#F3F4F6',
   },
   removeImageButton: {
     marginTop: 8,

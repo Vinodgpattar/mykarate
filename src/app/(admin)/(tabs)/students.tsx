@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Image } from 'react-native'
-import { Text, Card, Button, ActivityIndicator, Snackbar, Searchbar, Chip, Avatar } from 'react-native-paper'
-import { useRouter } from 'expo-router'
+import { Text, Card, Button, ActivityIndicator, Snackbar, Searchbar, Chip, Avatar, FAB } from 'react-native-paper'
+import { useRouter, useFocusEffect } from 'expo-router'
 import { useAuth } from '@/context/AuthContext'
 import { getStudents, deleteStudent, reactivateStudent, getStudentStatistics, type Student } from '@/lib/students'
 import { DeleteStudentDialog } from '@/components/shared/DeleteStudentDialog'
@@ -9,6 +9,7 @@ import { getBranches, type Branch } from '@/lib/branches'
 import { getProfileByUserId } from '@/lib/profiles'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { format } from 'date-fns'
+import { AdminHeader } from '@/components/admin/AdminHeader'
 
 interface StudentStats {
   total: number
@@ -18,16 +19,7 @@ interface StudentStats {
   profileIncomplete: number
 }
 
-const BELT_COLORS: Record<string, string> = {
-  White: '#FFFFFF',
-  Yellow: '#FFEB3B',
-  Orange: '#FF9800',
-  Green: '#4CAF50',
-  Blue: '#2196F3',
-  Purple: '#9C27B0',
-  Brown: '#795548',
-  Black: '#000000',
-}
+import { BELT_COLORS, getBeltDisplayName } from '@/lib/belts'
 
 export default function StudentsScreen() {
   const router = useRouter()
@@ -62,6 +54,10 @@ export default function StudentsScreen() {
   const [hasMore, setHasMore] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
 
+  // Refs to prevent unnecessary reloads
+  const lastLoadTimeRef = useRef<number>(0)
+  const isLoadingRef = useRef(false)
+
   useEffect(() => {
     checkRole()
     loadBranches()
@@ -71,6 +67,24 @@ export default function StudentsScreen() {
   useEffect(() => {
     applyFilters()
   }, [students, searchQuery, branchFilter, beltFilter, statusFilter])
+
+  // Auto-refresh when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      // Skip if just loaded or currently loading
+      const timeSinceLastLoad = Date.now() - lastLoadTimeRef.current
+      if (isLoadingRef.current || timeSinceLastLoad < 1000) {
+        return
+      }
+
+      // Reload data
+      isLoadingRef.current = true
+      loadData().finally(() => {
+        isLoadingRef.current = false
+        lastLoadTimeRef.current = Date.now()
+      })
+    }, [userBranchId, statusFilter])
+  )
 
   const checkRole = async () => {
     if (user?.id) {
@@ -132,6 +146,7 @@ export default function StudentsScreen() {
     } finally {
       setLoading(false)
       setRefreshing(false)
+      lastLoadTimeRef.current = Date.now()
     }
   }
 
@@ -268,18 +283,7 @@ export default function StudentsScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header with Create Button */}
-      <View style={styles.header}>
-        <Button
-          mode="contained"
-          icon="plus"
-          onPress={() => router.push('/(admin)/(tabs)/create-student')}
-          style={styles.createButton}
-          buttonColor="#7B2CBF"
-        >
-          Add Student
-        </Button>
-      </View>
+      <AdminHeader title="Students" />
 
       <ScrollView
         style={styles.scrollView}
@@ -482,6 +486,14 @@ export default function StudentsScreen() {
         </View>
       </ScrollView>
 
+      {/* Floating Action Button */}
+      <FAB
+        icon="plus"
+        style={styles.fab}
+        onPress={() => router.push('/(admin)/(tabs)/create-student')}
+        label="Add Student"
+      />
+
       <Snackbar
         visible={snackbar.visible}
         onDismiss={() => setSnackbar({ visible: false, message: '' })}
@@ -558,7 +570,7 @@ function StudentCard({
                         { color: student.current_belt === 'White' || student.current_belt === 'Yellow' ? '#000' : '#FFF' },
                       ]}
                     >
-                      {student.current_belt}
+                      {getBeltDisplayName(student.current_belt)}
                     </Text>
                   </View>
                   {!student.profile_completed && (
@@ -651,16 +663,7 @@ function StudentCard({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  header: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  createButton: {
-    alignSelf: 'flex-start',
+    backgroundColor: '#FFF8E7',
   },
   scrollView: {
     flex: 1,
@@ -735,7 +738,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#FFF8E7',
   },
   loadingText: {
     marginTop: 16,
@@ -868,6 +871,12 @@ const styles = StyleSheet.create({
   loadMoreContainer: {
     paddingVertical: 20,
     alignItems: 'center',
+  },
+  fab: {
+    position: 'absolute',
+    right: 16,
+    bottom: 80,
+    backgroundColor: '#7B2CBF',
   },
 })
 

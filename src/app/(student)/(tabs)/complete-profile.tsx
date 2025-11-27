@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react'
 import { View, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Image } from 'react-native'
-import { Text, TextInput, Button, Card, Snackbar, ActivityIndicator } from 'react-native-paper'
+import { Text, TextInput, Button, Card, Snackbar, ActivityIndicator, Menu } from 'react-native-paper'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '@/context/AuthContext'
 import { getStudentByUserId, updateStudent, uploadStudentPhoto, uploadAadharCard, type UpdateStudentData } from '@/lib/students'
+import { BELT_LEVELS, getBeltDisplayName } from '@/lib/belts'
 import * as ImagePicker from 'expo-image-picker'
 import { Alert } from 'react-native'
+import { DatePicker } from '@/components/shared/DatePicker'
 
 export default function CompleteProfileScreen() {
   const router = useRouter()
@@ -38,6 +40,7 @@ export default function CompleteProfileScreen() {
   const [saving, setSaving] = useState(false)
   const [snackbar, setSnackbar] = useState({ visible: false, message: '' })
   const [studentId, setStudentId] = useState<string | null>(null)
+  const [beltMenuVisible, setBeltMenuVisible] = useState(false)
 
   useEffect(() => {
     if (user?.id) {
@@ -104,8 +107,8 @@ export default function CompleteProfileScreen() {
 
             const result = await ImagePicker.launchCameraAsync({
               mediaTypes: ImagePicker.MediaTypeOptions.Images,
-              allowsEditing: true,
-              aspect: [4, 3],
+              allowsEditing: type === 'student', // Enable cropping only for student profile
+              aspect: type === 'student' ? [1, 1] : undefined, // Square aspect for profile, no aspect for Aadhar
               quality: 0.8,
             })
 
@@ -129,8 +132,8 @@ export default function CompleteProfileScreen() {
 
             const result = await ImagePicker.launchImageLibraryAsync({
               mediaTypes: ImagePicker.MediaTypeOptions.Images,
-              allowsEditing: true,
-              aspect: [4, 3],
+              allowsEditing: type === 'student', // Enable cropping only for student profile
+              aspect: type === 'student' ? [1, 1] : undefined, // Square aspect for profile, no aspect for Aadhar
               quality: 0.8,
             })
 
@@ -336,15 +339,14 @@ export default function CompleteProfileScreen() {
               left={<TextInput.Icon icon="phone" />}
             />
 
-            <TextInput
+            <DatePicker
               label="Date of Birth"
               value={formData.dateOfBirth}
-              onChangeText={(text) => setFormData({ ...formData, dateOfBirth: text })}
-              mode="outlined"
-              placeholder="YYYY-MM-DD"
+              onChange={(date) => setFormData({ ...formData, dateOfBirth: date })}
+              placeholder="Select date of birth"
               style={styles.input}
               outlineStyle={styles.inputOutline}
-              left={<TextInput.Icon icon="calendar" />}
+              maximumDate={new Date()}
             />
 
             <TextInput
@@ -382,15 +384,37 @@ export default function CompleteProfileScreen() {
               left={<TextInput.Icon icon="card-account-details" />}
             />
 
-            <TextInput
-              label="Current Belt"
-              value={formData.currentBelt}
-              onChangeText={(text) => setFormData({ ...formData, currentBelt: text })}
-              mode="outlined"
-              style={styles.input}
-              outlineStyle={styles.inputOutline}
-              left={<TextInput.Icon icon="karate" />}
-            />
+            <Menu
+              visible={beltMenuVisible}
+              onDismiss={() => setBeltMenuVisible(false)}
+              anchor={
+                <Button
+                  mode="outlined"
+                  onPress={() => {
+                    if (beltMenuVisible) {
+                      setBeltMenuVisible(false)
+                    } else {
+                      setTimeout(() => setBeltMenuVisible(true), 50)
+                    }
+                  }}
+                  style={styles.input}
+                  icon="karate"
+                >
+                  {formData.currentBelt ? getBeltDisplayName(formData.currentBelt) : 'Select Current Belt'}
+                </Button>
+              }
+            >
+              {BELT_LEVELS.map((belt) => (
+                <Menu.Item
+                  key={belt}
+                  onPress={() => {
+                    setFormData({ ...formData, currentBelt: belt })
+                    setBeltMenuVisible(false)
+                  }}
+                  title={getBeltDisplayName(belt)}
+                />
+              ))}
+            </Menu>
           </Card.Content>
         </Card>
 
@@ -568,7 +592,7 @@ export default function CompleteProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#FFF8E7',
   },
   scrollView: {
     flex: 1,
@@ -593,7 +617,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#FFF8E7',
   },
   loadingText: {
     marginTop: 16,

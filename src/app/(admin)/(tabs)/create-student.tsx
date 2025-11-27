@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { View, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, TouchableOpacity } from 'react-native'
-import { Text, TextInput, Button, Card, Snackbar, ActivityIndicator } from 'react-native-paper'
+import { Text, TextInput, Button, Card, Snackbar, ActivityIndicator, RadioButton, Switch, Menu } from 'react-native-paper'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -8,6 +8,9 @@ import { useAuth } from '@/context/AuthContext'
 import { createStudent, type CreateStudentData } from '@/lib/students'
 import { getBranches, type Branch } from '@/lib/branches'
 import { getProfileByUserId } from '@/lib/profiles'
+import { DatePicker } from '@/components/shared/DatePicker'
+import { BELT_LEVELS, getBeltDisplayName, BELT_COLORS } from '@/lib/belts'
+import { AdminHeader } from '@/components/admin/AdminHeader'
 
 export default function CreateStudentScreen() {
   const router = useRouter()
@@ -20,6 +23,10 @@ export default function CreateStudentScreen() {
     email: '',
     branchId: '',
     phone: '',
+    paymentType: 'monthly' as 'monthly' | 'yearly',
+    joinDate: new Date().toISOString().split('T')[0], // Default to today
+    registrationPaid: false,
+    currentBelt: 'White' as string,
   })
 
   const [branches, setBranches] = useState<Branch[]>([])
@@ -30,11 +37,14 @@ export default function CreateStudentScreen() {
     email?: string
     branchId?: string
     phone?: string
+    joinDate?: string
   }>({})
   const [loading, setLoading] = useState(false)
   const [snackbarVisible, setSnackbarVisible] = useState(false)
   const [snackbarMessage, setSnackbarMessage] = useState('')
   const [successData, setSuccessData] = useState<{ studentId: string; email: string; password: string } | null>(null)
+  const [beltMenuVisible, setBeltMenuVisible] = useState(false)
+  const defaultBranchIdRef = useRef<string>('') // Store default branch ID to preserve after form clear
 
   useEffect(() => {
     loadBranches()
@@ -55,7 +65,9 @@ export default function CreateStudentScreen() {
             // Branch admin sees only their branch
             setBranches(result.branches.filter((b) => b.id === profile.profile?.branchId) as Branch[])
             // Auto-select their branch
-            setFormData((prev) => ({ ...prev, branchId: profile.profile!.branchId! }))
+            const branchId = profile.profile!.branchId!
+            setFormData((prev) => ({ ...prev, branchId }))
+            defaultBranchIdRef.current = branchId // Store for form reset
           }
         }
       }
@@ -76,6 +88,12 @@ export default function CreateStudentScreen() {
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     return emailRegex.test(email.trim())
+  }
+
+  const validateDate = (date: string): boolean => {
+    if (!date.trim()) return false
+    // DatePicker ensures valid format, just check it's not empty
+    return date.trim().length > 0
   }
 
   const handleSubmit = async () => {
@@ -112,6 +130,13 @@ export default function CreateStudentScreen() {
       newErrors.phone = 'Please enter a valid phone number'
     }
 
+    // Validate join date
+    if (!formData.joinDate.trim()) {
+      newErrors.joinDate = 'Join date is required'
+    } else if (!validateDate(formData.joinDate)) {
+      newErrors.joinDate = 'Please enter a valid date (YYYY-MM-DD)'
+    }
+
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
       setSnackbarMessage('Please fix the errors in the form')
@@ -136,6 +161,10 @@ export default function CreateStudentScreen() {
         email: formData.email.trim(),
         branchId: formData.branchId,
         phone: formData.phone.trim() || undefined,
+        paymentType: formData.paymentType,
+        enrollmentDate: formData.joinDate.trim(),
+        registrationPaid: formData.registrationPaid,
+        currentBelt: formData.currentBelt,
       }
 
       const result = await createStudent(createData, user.id)
@@ -144,6 +173,21 @@ export default function CreateStudentScreen() {
         setSnackbarMessage(result.error.message)
         setSnackbarVisible(true)
       } else if (result.student && result.password) {
+        // Clear form data before showing success screen
+        // Preserve branch selection for branch admins
+        setFormData({
+          firstName: '',
+          lastName: '',
+          email: '',
+          branchId: defaultBranchIdRef.current, // Keep branch selection if it was auto-selected
+          phone: '',
+          paymentType: 'monthly',
+          joinDate: new Date().toISOString().split('T')[0],
+          registrationPaid: false,
+          currentBelt: 'White',
+        })
+        setErrors({})
+        
         // Show success with credentials
         setSuccessData({
           studentId: result.student.student_id,
@@ -241,12 +285,17 @@ export default function CreateStudentScreen() {
               mode="outlined"
               onPress={() => {
                 setSuccessData(null)
+                // Reset form with preserved branch ID
                 setFormData({
                   firstName: '',
                   lastName: '',
                   email: '',
-                  branchId: '',
+                  branchId: defaultBranchIdRef.current, // Preserve branch selection
                   phone: '',
+                  paymentType: 'monthly',
+                  joinDate: new Date().toISOString().split('T')[0],
+                  registrationPaid: false,
+                  currentBelt: 'White',
                 })
                 setErrors({})
               }}
@@ -274,26 +323,13 @@ export default function CreateStudentScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={insets.top}
     >
+      <AdminHeader title="Add Student" showBackButton />
+
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Button
-            icon="arrow-left"
-            onPress={() => router.back()}
-            mode="text"
-            textColor="#666"
-          >
-            Back
-          </Button>
-          <Text variant="headlineSmall" style={styles.title}>
-            Add New Student
-          </Text>
-          <View style={{ width: 60 }} />
-        </View>
 
         {/* Info Card */}
         <Card style={styles.infoCard}>
@@ -485,6 +521,158 @@ export default function CreateStudentScreen() {
                 </Text>
               </View>
             )}
+
+            {/* Join Date */}
+            <DatePicker
+              label="Join Date *"
+              value={formData.joinDate}
+              onChange={(date) => {
+                setFormData({ ...formData, joinDate: date })
+                if (errors.joinDate) {
+                  setErrors({ ...errors, joinDate: undefined })
+                }
+              }}
+              placeholder="Select join date"
+              error={!!errors.joinDate}
+              disabled={loading}
+              style={styles.input}
+              outlineStyle={styles.inputOutline}
+              maximumDate={new Date()}
+            />
+            {errors.joinDate && (
+              <View style={styles.errorContainer}>
+                <MaterialCommunityIcons name="alert-circle" size={16} color="#F59E0B" />
+                <Text variant="bodySmall" style={styles.error}>
+                  {errors.joinDate}
+                </Text>
+              </View>
+            )}
+            <Text variant="bodySmall" style={styles.helperText}>
+              Used to calculate the first billing period. For existing students, use their original join date.
+            </Text>
+
+            {/* Registration Fee Already Paid */}
+            <View style={styles.switchRow}>
+              <View style={styles.switchContent}>
+                <MaterialCommunityIcons name="cash-check" size={20} color="#6B7280" style={styles.switchIcon} />
+                <View style={styles.switchTextContainer}>
+                  <Text variant="bodyMedium" style={styles.switchLabel}>
+                    Registration fee already paid?
+                  </Text>
+                  <Text variant="bodySmall" style={styles.switchDescription}>
+                    Check this if the student has already paid the registration fee
+                  </Text>
+                </View>
+              </View>
+              <Switch
+                value={formData.registrationPaid}
+                onValueChange={(value) => setFormData({ ...formData, registrationPaid: value })}
+                disabled={loading}
+              />
+            </View>
+
+            {/* Current Belt Level */}
+            <View style={styles.sectionHeader}>
+              <MaterialCommunityIcons name="karate" size={24} color="#7B2CBF" />
+              <Text variant="titleMedium" style={styles.sectionTitle}>
+                Current Belt Level
+              </Text>
+            </View>
+            <Text variant="bodySmall" style={styles.helperText}>
+              Select the student's current belt level. Defaults to White for new students.
+            </Text>
+            <Menu
+              visible={beltMenuVisible}
+              onDismiss={() => setBeltMenuVisible(false)}
+              anchor={
+                <TouchableOpacity
+                  onPress={() => {
+                    if (beltMenuVisible) {
+                      setBeltMenuVisible(false)
+                    } else {
+                      setTimeout(() => setBeltMenuVisible(true), 50)
+                    }
+                  }}
+                  style={[styles.beltSelectorButton, { borderColor: errors.branchId ? '#F59E0B' : '#E5E7EB' }]}
+                  disabled={loading}
+                >
+                  <View style={styles.beltSelectorContent}>
+                    <MaterialCommunityIcons
+                      name="karate"
+                      size={20}
+                      color={BELT_COLORS[formData.currentBelt] || '#6B7280'}
+                    />
+                    <Text variant="bodyMedium" style={styles.beltSelectorText}>
+                      {getBeltDisplayName(formData.currentBelt)}
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons name="chevron-down" size={20} color="#6B7280" />
+                </TouchableOpacity>
+              }
+            >
+              {BELT_LEVELS.map((belt) => (
+                <Menu.Item
+                  key={belt}
+                  onPress={() => {
+                    setFormData({ ...formData, currentBelt: belt })
+                    setBeltMenuVisible(false)
+                  }}
+                  title={getBeltDisplayName(belt)}
+                  leadingIcon={() => (
+                    <View
+                      style={[
+                        styles.beltMenuIcon,
+                        { backgroundColor: BELT_COLORS[belt] || '#E5E7EB' },
+                      ]}
+                    />
+                  )}
+                />
+              ))}
+            </Menu>
+
+            {/* Payment Preference */}
+            <View style={styles.sectionHeader}>
+              <MaterialCommunityIcons name="cash-multiple" size={24} color="#7B2CBF" />
+              <Text variant="titleMedium" style={styles.sectionTitle}>
+                Payment Preference *
+              </Text>
+            </View>
+            <Text variant="bodySmall" style={styles.helperText}>
+              Select how the student will pay fees (monthly or yearly)
+            </Text>
+            <RadioButton.Group
+              onValueChange={(value) => setFormData({ ...formData, paymentType: value as 'monthly' | 'yearly' })}
+              value={formData.paymentType}
+            >
+              <TouchableOpacity
+                onPress={() => setFormData({ ...formData, paymentType: 'monthly' })}
+                style={styles.radioOption}
+              >
+                <RadioButton value="monthly" />
+                <View style={styles.radioOptionContent}>
+                  <Text variant="bodyMedium" style={styles.radioOptionLabel}>
+                    Monthly Fees
+                  </Text>
+                  <Text variant="bodySmall" style={styles.radioOptionDescription}>
+                    Student will pay fees every month
+                  </Text>
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setFormData({ ...formData, paymentType: 'yearly' })}
+                style={styles.radioOption}
+              >
+                <RadioButton value="yearly" />
+                <View style={styles.radioOptionContent}>
+                  <Text variant="bodyMedium" style={styles.radioOptionLabel}>
+                    Yearly Fees
+                  </Text>
+                  <Text variant="bodySmall" style={styles.radioOptionDescription}>
+                    Student will pay fees once per year
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </RadioButton.Group>
           </Card.Content>
         </Card>
       </ScrollView>
@@ -532,7 +720,7 @@ export default function CreateStudentScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#FFF8E7',
   },
   scrollView: {
     flex: 1,
@@ -552,17 +740,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    paddingTop: 8,
-  },
-  title: {
-    fontWeight: 'bold',
-    color: '#1a1a1a',
   },
   infoCard: {
     marginBottom: 16,
@@ -664,6 +841,93 @@ const styles = StyleSheet.create({
   branchOptionCode: {
     color: '#6B7280',
     fontSize: 12,
+  },
+  helperText: {
+    color: '#6B7280',
+    marginBottom: 12,
+    fontSize: 13,
+  },
+  radioOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  radioOptionContent: {
+    flex: 1,
+  },
+  radioOptionLabel: {
+    fontWeight: '500',
+    color: '#1F2937',
+    marginBottom: 2,
+  },
+  radioOptionDescription: {
+    color: '#6B7280',
+    fontSize: 12,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  switchContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
+  switchIcon: {
+    marginRight: 4,
+  },
+  switchTextContainer: {
+    flex: 1,
+  },
+  switchLabel: {
+    fontWeight: '500',
+    color: '#1F2937',
+    marginBottom: 2,
+  },
+  switchDescription: {
+    color: '#6B7280',
+    fontSize: 12,
+  },
+  beltSelectorButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  beltSelectorContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  beltSelectorText: {
+    fontWeight: '500',
+    color: '#1F2937',
+  },
+  beltMenuIcon: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    marginRight: 8,
   },
   actions: {
     flexDirection: 'row',

@@ -6,6 +6,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '@/context/AuthContext'
 import { createBranch, updateBranch, getBranchById, type CreateBranchData, type UpdateBranchData } from '@/lib/branches'
+import { AdminHeader } from '@/components/admin/AdminHeader'
 
 export default function CreateBranchScreen() {
   const router = useRouter()
@@ -50,6 +51,26 @@ export default function CreateBranchScreen() {
   React.useEffect(() => {
     if (isEdit && params.id) {
       loadBranch(params.id as string)
+    } else {
+      // Clear form when creating a new branch (not editing)
+      setFormData({
+        name: '',
+        address: '',
+        phone: '',
+        email: '',
+      })
+      setAdminData({
+        assignAdmin: false,
+        adminName: '',
+        adminEmail: '',
+        adminPhone: '',
+        adminAddress: '',
+        adminQualifications: '',
+        adminExperience: '',
+        adminSpecialization: '',
+        sendEmail: true,
+      })
+      setErrors({})
     }
   }, [isEdit, params.id])
 
@@ -199,9 +220,30 @@ export default function CreateBranchScreen() {
           setSnackbarMessage(result.error.message)
           setSnackbarVisible(true)
         } else {
+          // Clear form data after successful creation
+          setFormData({
+            name: '',
+            address: '',
+            phone: '',
+            email: '',
+          })
+          setAdminData({
+            assignAdmin: false,
+            adminName: '',
+            adminEmail: '',
+            adminPhone: '',
+            adminAddress: '',
+            adminQualifications: '',
+            adminExperience: '',
+            adminSpecialization: '',
+            sendEmail: true,
+          })
+          setErrors({})
+          
           setSnackbarMessage(`Branch "${result.branch?.name}" created successfully!`)
           setSnackbarVisible(true)
-          setTimeout(() => router.back(), 1500)
+          // Navigate to branches screen instead of going back
+          setTimeout(() => router.push('/(admin)/(tabs)/branches'), 1500)
         }
       }
     } catch (err: any) {
@@ -228,26 +270,16 @@ export default function CreateBranchScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={insets.top}
     >
+      <AdminHeader
+        title={isEdit ? 'Edit Branch' : 'Create Branch'}
+        showBackButton
+      />
+
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Button
-            icon="arrow-left"
-            onPress={() => router.back()}
-            mode="text"
-            textColor="#666"
-          >
-            Back
-          </Button>
-          <Text variant="headlineSmall" style={styles.title}>
-            {isEdit ? 'Edit Branch' : 'Create Branch'}
-          </Text>
-          <View style={{ width: 60 }} />
-        </View>
 
         {/* Branch Information Card */}
         <Card style={styles.card}>
@@ -617,16 +649,20 @@ export default function CreateBranchScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#FFF8E7',
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 16,
+    paddingBottom: 100,
   },
   stickyButtonContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: '#F3F4F6',
@@ -637,17 +673,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    paddingTop: 8,
-  },
-  title: {
-    fontWeight: 'bold',
-    color: '#1a1a1a',
   },
   card: {
     elevation: 2,
@@ -733,7 +758,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#FFF8E7',
   },
   loadingText: {
     marginTop: 16,

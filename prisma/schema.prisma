@@ -15,11 +15,13 @@ model Profile {
   user_id        String   @unique @map("user_id") @db.Uuid // References auth.users.id
   role           String   @db.VarChar(20) // 'super_admin' | 'admin' | 'student'
   email          String? // Denormalized for convenience
+  name           String? @db.VarChar(255) // Display name for admins
   phone          String? // Admin phone number
   address        String? // Admin address
   qualifications String? @db.VarChar(200) // e.g., "3rd Dan Black Belt"
   experience     String? @db.VarChar(100) // e.g., "15+ Years"
   specialization String? @db.VarChar(200) // e.g., "Shotokan Karate"
+  profileImageUrl String? @map("profile_image_url") @db.Text // Profile image URL for admins
   branchId       String?  @map("branch_id") @db.Uuid // For branch admins
   branch         Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
   students       Student[] // Students linked to this profile

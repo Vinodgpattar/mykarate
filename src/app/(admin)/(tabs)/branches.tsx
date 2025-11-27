@@ -1,12 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native'
-import { Text, Card, Button, ActivityIndicator, Snackbar, Searchbar, Chip } from 'react-native-paper'
-import { useRouter } from 'expo-router'
+import { Text, Card, Button, ActivityIndicator, Snackbar, Searchbar, Chip, FAB } from 'react-native-paper'
+import { useRouter, useFocusEffect } from 'expo-router'
 import { useAuth } from '@/context/AuthContext'
 import { getBranches, deleteBranch, getBranchStatistics, type Branch, type BranchWithAdmin } from '@/lib/branches'
 import { getProfileByUserId } from '@/lib/profiles'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { format } from 'date-fns'
+import { AdminHeader } from '@/components/admin/AdminHeader'
 
 interface BranchStats {
   total: number
@@ -38,6 +39,10 @@ export default function BranchesScreen() {
   const [hasMore, setHasMore] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
 
+  // Refs to prevent unnecessary reloads
+  const lastLoadTimeRef = useRef<number>(0)
+  const isLoadingRef = useRef(false)
+
   useEffect(() => {
     checkRole()
     loadData()
@@ -46,6 +51,24 @@ export default function BranchesScreen() {
   useEffect(() => {
     applyFilters()
   }, [branches, searchQuery, statusFilter])
+
+  // Auto-refresh when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      // Skip if just loaded or currently loading
+      const timeSinceLastLoad = Date.now() - lastLoadTimeRef.current
+      if (isLoadingRef.current || timeSinceLastLoad < 1000) {
+        return
+      }
+
+      // Reload data
+      isLoadingRef.current = true
+      loadData().finally(() => {
+        isLoadingRef.current = false
+        lastLoadTimeRef.current = Date.now()
+      })
+    }, [])
+  )
 
   const checkRole = async () => {
     if (user?.id) {
@@ -88,6 +111,7 @@ export default function BranchesScreen() {
     } finally {
       setLoading(false)
       setRefreshing(false)
+      lastLoadTimeRef.current = Date.now()
     }
   }
 
@@ -155,25 +179,8 @@ export default function BranchesScreen() {
       if (result.error) {
         setSnackbar({ visible: true, message: result.error.message })
       } else {
-        // Reload data to refresh the list
+        setSnackbar({ visible: true, message: `Branch "${branchName}" deleted successfully` })
         loadData()
-        
-        // Check if branch still exists (soft deleted) or was removed (hard deleted)
-        // We need to check after a small delay to allow the database to update
-        setTimeout(async () => {
-          const updatedResult = await getBranches({ page: 1, limit: 1000, includeAdmin: true })
-          const deletedBranch = updatedResult.branches?.find(b => b.id === branchId)
-          
-          if (deletedBranch && deletedBranch.status === 'inactive') {
-            // Branch was soft deleted - show informative message
-            setSnackbar({ 
-              visible: true, 
-              message: `Branch "${branchName}" has students and was set to inactive. Students are still associated with this branch.` 
-            })
-          } else {
-            setSnackbar({ visible: true, message: `Branch "${branchName}" deleted successfully` })
-          }
-        }, 500)
       }
     } catch (error) {
       setSnackbar({ visible: true, message: 'Failed to delete branch' })
@@ -191,20 +198,7 @@ export default function BranchesScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header with Create Button */}
-      {isSuperAdmin && (
-        <View style={styles.header}>
-          <Button
-            mode="contained"
-            icon="plus"
-            onPress={() => router.push('/(admin)/(tabs)/create-branch')}
-            style={styles.createButton}
-            buttonColor="#7B2CBF"
-          >
-            Create Branch
-          </Button>
-        </View>
-      )}
+      <AdminHeader title="Branches" />
 
       <ScrollView
         style={styles.scrollView}
@@ -362,6 +356,16 @@ export default function BranchesScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* Floating Action Button */}
+      {isSuperAdmin && (
+        <FAB
+          icon="plus"
+          style={styles.fab}
+          onPress={() => router.push('/(admin)/(tabs)/create-branch')}
+          label="Create"
+        />
+      )}
 
       <Snackbar
         visible={snackbar.visible}
@@ -582,16 +586,7 @@ function BranchCard({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  header: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  createButton: {
-    alignSelf: 'flex-start',
+    backgroundColor: '#FFF8E7',
   },
   scrollView: {
     flex: 1,
@@ -659,7 +654,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#FFF8E7',
   },
   loadingText: {
     marginTop: 16,
@@ -792,5 +787,11 @@ const styles = StyleSheet.create({
   loadMoreContainer: {
     paddingVertical: 20,
     alignItems: 'center',
+  },
+  fab: {
+    position: 'absolute',
+    right: 16,
+    bottom: 80,
+    backgroundColor: '#7B2CBF',
   },
 })

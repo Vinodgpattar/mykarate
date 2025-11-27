@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Image } from 'react-native'
 import { Text, Card, Button, ActivityIndicator, Chip, Searchbar, Menu, Divider } from 'react-native-paper'
-import { useRouter } from 'expo-router'
+import { useRouter, useFocusEffect } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { formatDistanceToNow } from 'date-fns'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { getAllLeaveInforms, type LeaveInform } from '@/lib/student-leave-informs'
 import { logger } from '@/lib/logger'
+import { AdminHeader } from '@/components/admin/AdminHeader'
 
 export default function StudentInformsScreen() {
   const router = useRouter()
@@ -19,6 +20,10 @@ export default function StudentInformsScreen() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved'>('all')
   const [statusMenuVisible, setStatusMenuVisible] = useState(false)
 
+  // Refs to prevent unnecessary reloads
+  const lastLoadTimeRef = useRef<number>(0)
+  const isLoadingRef = useRef(false)
+
   useEffect(() => {
     loadData()
   }, [])
@@ -26,6 +31,24 @@ export default function StudentInformsScreen() {
   useEffect(() => {
     applyFilters()
   }, [informs, searchQuery, statusFilter])
+
+  // Auto-refresh when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      // Skip if just loaded or currently loading
+      const timeSinceLastLoad = Date.now() - lastLoadTimeRef.current
+      if (isLoadingRef.current || timeSinceLastLoad < 1000) {
+        return
+      }
+
+      // Reload data
+      isLoadingRef.current = true
+      loadData().finally(() => {
+        isLoadingRef.current = false
+        lastLoadTimeRef.current = Date.now()
+      })
+    }, [statusFilter, searchQuery])
+  )
 
   const loadData = async () => {
     try {
@@ -46,6 +69,7 @@ export default function StudentInformsScreen() {
     } finally {
       setLoading(false)
       setRefreshing(false)
+      lastLoadTimeRef.current = Date.now()
     }
   }
 
@@ -84,23 +108,21 @@ export default function StudentInformsScreen() {
   const getStatusBadge = (status: string) => {
     if (status === 'approved') {
       return (
-        <Chip
-          icon="check-circle"
-          style={[styles.statusChip, { backgroundColor: '#10B981' }]}
-          textStyle={styles.statusChipText}
-        >
-          Approved
-        </Chip>
+        <View style={[styles.statusBadge, { backgroundColor: '#10B981' }]}>
+          <MaterialCommunityIcons name="check-circle" size={12} color="#FFFFFF" style={styles.statusIcon} />
+          <Text variant="labelSmall" style={styles.statusText}>
+            Approved
+          </Text>
+        </View>
       )
     }
     return (
-      <Chip
-        icon="clock-outline"
-        style={[styles.statusChip, { backgroundColor: '#F59E0B' }]}
-        textStyle={styles.statusChipText}
-      >
-        Pending
-      </Chip>
+      <View style={[styles.statusBadge, { backgroundColor: '#F59E0B' }]}>
+        <MaterialCommunityIcons name="clock-outline" size={12} color="#FFFFFF" style={styles.statusIcon} />
+        <Text variant="labelSmall" style={styles.statusText}>
+          Pending
+        </Text>
+      </View>
     )
   }
 
@@ -116,15 +138,11 @@ export default function StudentInformsScreen() {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Text variant="headlineSmall" style={styles.title}>
-          Student Informs
-        </Text>
-        <Text variant="bodyMedium" style={styles.subtitle}>
-          Students have informed about their absence
-        </Text>
-      </View>
+    <View style={styles.container}>
+      <AdminHeader
+        title="Student Informs"
+        subtitle="Students have informed about their absence"
+      />
 
       <View style={styles.filters}>
         <Searchbar
@@ -140,7 +158,13 @@ export default function StudentInformsScreen() {
           anchor={
             <Button
               mode="outlined"
-              onPress={() => setStatusMenuVisible(true)}
+              onPress={() => {
+                if (statusMenuVisible) {
+                  setStatusMenuVisible(false)
+                } else {
+                  setTimeout(() => setStatusMenuVisible(true), 50)
+                }
+              }}
               style={styles.filterButton}
               icon="filter"
             >
@@ -240,22 +264,7 @@ export default function StudentInformsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  header: {
-    backgroundColor: '#FFFFFF',
-    padding: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  title: {
-    fontWeight: 'bold',
-    color: '#1A1A1A',
-    marginBottom: 4,
-  },
-  subtitle: {
-    color: '#6B7280',
+    backgroundColor: '#FFF8E7',
   },
   filters: {
     flexDirection: 'row',
@@ -345,13 +354,21 @@ const styles = StyleSheet.create({
   studentId: {
     color: '#6B7280',
   },
-  statusChip: {
-    height: 28,
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
   },
-  statusChipText: {
-    fontSize: 12,
-    color: '#FFFFFF',
+  statusIcon: {
+    marginRight: 0,
+  },
+  statusText: {
+    fontSize: 11,
     fontWeight: '600',
+    color: '#FFFFFF',
   },
   message: {
     color: '#1A1A1A',

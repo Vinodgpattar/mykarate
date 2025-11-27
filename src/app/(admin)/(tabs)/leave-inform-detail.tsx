@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '@/context/AuthContext'
 import { getLeaveInformById, approveLeaveInform } from '@/lib/student-leave-informs'
 import { logger } from '@/lib/logger'
+import { AdminHeader } from '@/components/admin/AdminHeader'
 
 export default function LeaveInformDetailScreen() {
   const router = useRouter()
@@ -113,16 +114,8 @@ export default function LeaveInformDetailScreen() {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Button icon="arrow-left" onPress={() => router.back()} mode="text" textColor="#666">
-          Back
-        </Button>
-        <Text variant="headlineSmall" style={styles.title}>
-          Leave Inform
-        </Text>
-        <View style={{ width: 60 }} />
-      </View>
+    <View style={styles.container}>
+      <AdminHeader title="Leave Inform" showBackButton />
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {/* Student Info Card */}
@@ -158,21 +151,19 @@ export default function LeaveInformDetailScreen() {
                 Status
               </Text>
               {inform.status === 'approved' ? (
-                <Chip
-                  icon="check-circle"
-                  style={[styles.statusChip, { backgroundColor: '#10B981' }]}
-                  textStyle={styles.statusChipText}
-                >
-                  Approved
-                </Chip>
+                <View style={[styles.statusBadge, { backgroundColor: '#10B981' }]}>
+                  <MaterialCommunityIcons name="check-circle" size={12} color="#FFFFFF" style={styles.statusIcon} />
+                  <Text variant="labelSmall" style={styles.statusText}>
+                    Approved
+                  </Text>
+                </View>
               ) : (
-                <Chip
-                  icon="clock-outline"
-                  style={[styles.statusChip, { backgroundColor: '#F59E0B' }]}
-                  textStyle={styles.statusChipText}
-                >
-                  Pending
-                </Chip>
+                <View style={[styles.statusBadge, { backgroundColor: '#F59E0B' }]}>
+                  <MaterialCommunityIcons name="clock-outline" size={12} color="#FFFFFF" style={styles.statusIcon} />
+                  <Text variant="labelSmall" style={styles.statusText}>
+                    Pending
+                  </Text>
+                </View>
               )}
             </View>
 
@@ -261,27 +252,13 @@ export default function LeaveInformDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  title: {
-    fontWeight: 'bold',
-    color: '#1A1A1A',
+    backgroundColor: '#FFF8E7',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#FFF8E7',
   },
   loadingText: {
     marginTop: 16,
@@ -343,13 +320,21 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontWeight: '600',
   },
-  statusChip: {
-    height: 32,
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
   },
-  statusChipText: {
-    fontSize: 13,
-    color: '#FFFFFF',
+  statusIcon: {
+    marginRight: 0,
+  },
+  statusText: {
+    fontSize: 11,
     fontWeight: '600',
+    color: '#FFFFFF',
   },
   divider: {
     marginVertical: 16,

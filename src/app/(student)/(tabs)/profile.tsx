@@ -1,15 +1,19 @@
-import { useState, useEffect } from 'react'
-import { View, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native'
+import { useState, useEffect, useCallback } from 'react'
+import { View, StyleSheet, ScrollView, TouchableOpacity, Image, Alert } from 'react-native'
 import { Text, Card, Button, ActivityIndicator, Snackbar, ProgressBar } from 'react-native-paper'
-import { useRouter } from 'expo-router'
+import { useRouter, useFocusEffect } from 'expo-router'
 import { useAuth } from '@/context/AuthContext'
 import { getStudentByUserId, updateStudent, type UpdateStudentData } from '@/lib/students'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { format } from 'date-fns'
+import { useQueryClient } from '@tanstack/react-query'
+import { StudentHeader } from '@/components/student/StudentHeader'
+import { COLORS, SPACING, RADIUS, ELEVATION } from '@/lib/design-system'
 
 export default function StudentProfileScreen() {
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, signOut } = useAuth()
+  const queryClient = useQueryClient()
   const [student, setStudent] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [snackbar, setSnackbar] = useState({ visible: false, message: '' })
@@ -19,6 +23,15 @@ export default function StudentProfileScreen() {
       loadStudent()
     }
   }, [user])
+
+  // Reload student data when screen comes into focus (e.g., after uploading image)
+  useFocusEffect(
+    useCallback(() => {
+      if (user?.id) {
+        loadStudent()
+      }
+    }, [user])
+  )
 
   const loadStudent = async () => {
     try {
@@ -52,6 +65,36 @@ export default function StudentProfileScreen() {
     return Math.round((completed / fields.length) * 100)
   }
 
+  const handleLogout = () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Clear React Query cache
+              queryClient.clear()
+              // Sign out from Supabase
+              await signOut()
+              // Navigate to login
+              router.replace('/(auth)/login')
+            } catch (error) {
+              console.error('Error signing out:', error)
+              Alert.alert('Error', 'Failed to sign out. Please try again.')
+            }
+          },
+        },
+      ]
+    )
+  }
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -74,13 +117,8 @@ export default function StudentProfileScreen() {
 
   return (
     <View style={styles.container}>
+      <StudentHeader title="My Profile" />
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text variant="headlineSmall" style={styles.title}>
-            My Profile
-          </Text>
-        </View>
 
         {/* Profile Completion Card */}
         {!student.profile_completed && (
@@ -92,7 +130,7 @@ export default function StudentProfileScreen() {
                   Complete Your Profile
                 </Text>
               </View>
-              <ProgressBar progress={completion / 100} color="#7B2CBF" style={styles.progressBar} />
+              <ProgressBar progress={completion / 100} color={COLORS.brandPurple} style={styles.progressBar} />
               <Text variant="bodySmall" style={styles.completionText}>
                 {completion}% Complete
               </Text>
@@ -100,7 +138,7 @@ export default function StudentProfileScreen() {
                 mode="contained"
                 onPress={() => router.push('/(student)/(tabs)/complete-profile')}
                 style={styles.completeButton}
-                buttonColor="#7B2CBF"
+                buttonColor={COLORS.brandPurple}
               >
                 Complete Profile
               </Button>
@@ -116,7 +154,7 @@ export default function StudentProfileScreen() {
                 <Image source={{ uri: student.student_photo_url }} style={styles.profilePhoto} />
               ) : (
                 <View style={styles.avatarPlaceholder}>
-                  <MaterialCommunityIcons name="account" size={40} color="#7B2CBF" />
+                  <MaterialCommunityIcons name="account" size={40} color={COLORS.brandPurple} />
                 </View>
               )}
               <View style={styles.profileInfo}>
@@ -135,7 +173,7 @@ export default function StudentProfileScreen() {
         <Card style={styles.card}>
           <Card.Content>
             <View style={styles.sectionHeader}>
-              <MaterialCommunityIcons name="account" size={24} color="#7B2CBF" />
+              <MaterialCommunityIcons name="account" size={24} color={COLORS.brandPurple} />
               <Text variant="titleMedium" style={styles.sectionTitle}>
                 Personal Information
               </Text>
@@ -185,6 +223,17 @@ export default function StudentProfileScreen() {
           {student.profile_completed ? 'Edit Profile' : 'Complete Profile'}
         </Button>
 
+        {/* Logout Button */}
+        <Button
+          mode="contained"
+          onPress={handleLogout}
+          style={styles.logoutButton}
+          buttonColor={COLORS.warning}
+          icon="logout"
+        >
+          Sign Out
+        </Button>
+
         <View style={styles.bottomPadding} />
       </ScrollView>
 
@@ -202,7 +251,7 @@ export default function StudentProfileScreen() {
 function InfoRow({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
     <View style={styles.infoRow}>
-      <MaterialCommunityIcons name={icon as any} size={18} color="#6B7280" />
+      <MaterialCommunityIcons name={icon as any} size={18} color={COLORS.textSecondary} />
       <View style={styles.infoContent}>
         <Text variant="bodySmall" style={styles.infoLabel}>
           {label}
@@ -218,43 +267,37 @@ function InfoRow({ icon, label, value }: { icon: string; label: string; value: s
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: COLORS.background,
   },
   scrollView: {
     flex: 1,
   },
   content: {
-    padding: 16,
+    padding: SPACING.lg,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: COLORS.background,
   },
   loadingText: {
-    marginTop: 16,
-    color: '#666',
-  },
-  header: {
-    marginBottom: 16,
-    paddingTop: 8,
-  },
-  title: {
-    fontWeight: 'bold',
-    color: '#1a1a1a',
+    marginTop: SPACING.lg,
+    color: COLORS.textSecondary,
   },
   completionCard: {
-    marginBottom: 16,
-    elevation: 2,
-    borderRadius: 12,
+    marginBottom: SPACING.lg,
+    elevation: ELEVATION.sm,
+    borderRadius: RADIUS.md,
     backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   completionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginBottom: 12,
+    gap: SPACING.md,
+    marginBottom: SPACING.md,
   },
   completionTitle: {
     fontWeight: '600',
@@ -262,24 +305,28 @@ const styles = StyleSheet.create({
   },
   progressBar: {
     height: 8,
-    borderRadius: 4,
-    marginBottom: 8,
+    borderRadius: RADIUS.sm,
+    marginBottom: SPACING.sm,
   },
   completionText: {
     color: '#92400E',
-    marginBottom: 12,
+    marginBottom: SPACING.md,
+    fontSize: 13,
   },
   completeButton: {
-    marginTop: 8,
+    marginTop: SPACING.sm,
   },
   card: {
-    marginBottom: 16,
-    elevation: 2,
-    borderRadius: 12,
+    marginBottom: SPACING.lg,
+    elevation: ELEVATION.sm,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   profileHeader: {
     flexDirection: 'row',
-    gap: 16,
+    gap: SPACING.lg,
     alignItems: 'center',
   },
   profilePhoto: {
@@ -300,45 +347,53 @@ const styles = StyleSheet.create({
   },
   profileName: {
     fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 4,
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.xs,
   },
   studentId: {
-    color: '#6B7280',
+    color: COLORS.textSecondary,
     fontFamily: 'monospace',
+    fontSize: 13,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
+    gap: SPACING.md,
+    marginBottom: SPACING.lg,
   },
   sectionTitle: {
     fontWeight: '600',
-    color: '#1a1a1a',
+    color: COLORS.textPrimary,
   },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 12,
-    marginBottom: 16,
+    gap: SPACING.md,
+    marginBottom: SPACING.lg,
   },
   infoContent: {
     flex: 1,
   },
   infoLabel: {
-    color: '#6B7280',
-    marginBottom: 4,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.xs,
+    fontSize: 12,
   },
   infoValue: {
-    color: '#1F2937',
+    color: COLORS.textPrimary,
     fontWeight: '500',
+    fontSize: 14,
   },
   editButton: {
-    marginTop: 8,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.lg,
+  },
+  logoutButton: {
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.sm,
   },
   bottomPadding: {
-    height: 20,
+    height: SPACING.xl,
   },
 })
 

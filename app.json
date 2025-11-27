@@ -1,12 +1,13 @@
 {
   "expo": {
-    "name": "Karate Dojo",
+    "name": "Karate Sports Club Hubballi",
     "slug": "karate-dojo-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "splash": {
-      "backgroundColor": "#DC2626",
+      "image": "./assets/dojo-logo.jpg",
+      "backgroundColor": "#FFF8E7",
       "resizeMode": "contain"
     },
     "assetBundlePatterns": [

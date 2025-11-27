@@ -1,29 +1,83 @@
-import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native'
-import { Text, Card } from 'react-native-paper'
+import { View, StyleSheet, ScrollView, RefreshControl, Alert } from 'react-native'
+import { Text } from 'react-native-paper'
 import { useAuth } from '@/context/AuthContext'
-import { useRouter } from 'expo-router'
-import { MaterialCommunityIcons } from '@expo/vector-icons'
+import { useRouter, useFocusEffect } from 'expo-router'
 import { format } from 'date-fns'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useState, useEffect } from 'react'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { getBranches, type Branch } from '@/lib/branches'
-import { getProfileByUserId } from '@/lib/profiles'
+import { getProfileByUserId, getAdminProfileByUserId } from '@/lib/profiles'
+import { AdminHeader } from '@/components/admin/AdminHeader'
+import { useAdminDashboard } from '@/hooks/useAdminDashboard'
+import { OverviewStatsSection } from '@/components/admin/dashboard/OverviewStatsSection'
+import { QuickActionsSection } from '@/components/admin/dashboard/QuickActionsSection'
+import { AlertsSection } from '@/components/admin/dashboard/AlertsSection'
+import { RecentBranchesSection } from '@/components/admin/dashboard/RecentBranchesSection'
+import { AllFeaturesSection } from '@/components/admin/dashboard/AllFeaturesSection'
+import { ErrorState } from '@/components/admin/dashboard/ErrorState'
+import { HeroWelcomeSection } from '@/components/admin/dashboard/HeroWelcomeSection'
+import { QuickInsightsCard } from '@/components/admin/dashboard/QuickInsightsCard'
+import { StorageMonitoringSection } from '@/components/admin/dashboard/StorageMonitoringSection'
+import { COLORS, SPACING } from '@/lib/design-system'
 
 export default function AdminDashboardScreen() {
   const { user, signOut } = useAuth()
   const router = useRouter()
   const queryClient = useQueryClient()
-  const insets = useSafeAreaInsets()
-  const [refreshing, setRefreshing] = useState(false)
-  const [branches, setBranches] = useState<Branch[]>([])
+  const { branches, studentStats, loading, refreshing, error, onRefresh, reload } = useAdminDashboard()
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null)
+  const [adminName, setAdminName] = useState<string | null>(null)
+
+  // Refs to prevent unnecessary reloads
+  const lastLoadTimeRef = useRef<number>(0)
+  const hasLoadedOnFocusRef = useRef<boolean>(false)
+  const reloadRef = useRef(reload)
+  const refreshingRef = useRef(refreshing)
+
+  // Keep refs updated
+  reloadRef.current = reload
+  refreshingRef.current = refreshing
+
+  const loadProfileImage = useCallback(async () => {
+    if (user?.id) {
+      const result = await getAdminProfileByUserId(user.id)
+      if (result.profile) {
+        setProfileImageUrl(result.profile.profileImageUrl || null)
+        setAdminName(result.profile.name || null)
+      }
+    }
+  }, [user?.id])
 
   useEffect(() => {
     checkRole()
-    loadData()
-  }, [user])
+    loadProfileImage()
+  }, [user, loadProfileImage])
+
+  // Reload data when screen comes into focus (e.g., after creating/editing students/branches)
+  useFocusEffect(
+    useCallback(() => {
+      if (!user?.id) return
+
+      // Skip if just loaded or currently refreshing
+      const timeSinceLastLoad = Date.now() - lastLoadTimeRef.current
+      if (refreshingRef.current || timeSinceLastLoad < 2000 || hasLoadedOnFocusRef.current) {
+        return
+      }
+
+      // Mark as loaded and reload data
+      hasLoadedOnFocusRef.current = true
+      lastLoadTimeRef.current = Date.now()
+      
+      // Load profile image and reload dashboard data
+      loadProfileImage()
+      reloadRef.current()
+      
+      // Reset flag when screen loses focus (cleanup)
+      return () => {
+        hasLoadedOnFocusRef.current = false
+      }
+    }, [user?.id, loadProfileImage]) // Only depend on user.id and loadProfileImage
+  )
 
   const checkRole = async () => {
     if (user?.id) {
@@ -32,27 +86,6 @@ export default function AdminDashboardScreen() {
         setIsSuperAdmin(true)
       }
     }
-  }
-
-  const loadData = async () => {
-    try {
-      setLoading(true)
-      const result = await getBranches()
-      if (result.branches) {
-        setBranches(result.branches as Branch[])
-      }
-    } catch (error) {
-      console.error('Error loading data:', error)
-    } finally {
-      setLoading(false)
-      setRefreshing(false)
-    }
-  }
-
-  const onRefresh = async () => {
-    setRefreshing(true)
-    await queryClient.invalidateQueries({ queryKey: ['branches'] })
-    await loadData()
   }
 
   const handleLogout = () => {
@@ -90,30 +123,19 @@ export default function AdminDashboardScreen() {
   const activeBranches = branches.filter((b) => b.status === 'active').length
   const totalBranches = branches.length
 
+  // Show error state if there's an error and no data
+  if (error && branches.length === 0 && !studentStats) {
+    return (
+      <View style={styles.container}>
+        <AdminHeader subtitle={`${today} • ${time}`} />
+        <ErrorState message="Failed to load dashboard data" onRetry={reload} />
+      </View>
+    )
+  }
+
   return (
     <View style={styles.container}>
-      {/* Fixed Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <View style={styles.headerLeft}>
-          <View style={styles.logoWrapper}>
-            <View style={styles.logoCircle}>
-              <MaterialCommunityIcons name="karate" size={24} color="#7B2CBF" />
-            </View>
-            <Text variant="headlineSmall" style={styles.brandName}>
-              Karate Dojo
-            </Text>
-          </View>
-        </View>
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={styles.headerButton}
-            onPress={() => router.push('/(admin)/(tabs)/more')}
-            activeOpacity={0.7}
-          >
-            <MaterialCommunityIcons name="account-circle" size={28} color="#1F2937" />
-          </TouchableOpacity>
-        </View>
-      </View>
+      <AdminHeader subtitle={`${today} • ${time}`} />
 
       <ScrollView
         style={styles.scrollView}
@@ -121,118 +143,42 @@ export default function AdminDashboardScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* Welcome Section */}
-        <View style={styles.welcomeSection}>
-          <Text variant="titleLarge" style={styles.welcomeText}>
-            Welcome back!
-          </Text>
-          <Text variant="bodyMedium" style={styles.dateText}>
-            {today} • {time}
-          </Text>
-        </View>
+        {/* Hero Welcome Section */}
+        <HeroWelcomeSection 
+          userName={adminName || user?.email?.split('@')[0] || 'Admin'} 
+          profileImageUrl={profileImageUrl}
+        />
 
-        {/* Quick Stats */}
-        <View style={styles.section}>
-          <Text variant="titleMedium" style={styles.sectionTitle}>
-            📊 Overview
-          </Text>
-          <View style={styles.statsContainer}>
-            <Card style={styles.statCard}>
-              <Card.Content style={styles.statContent}>
-                <MaterialCommunityIcons name="office-building" size={28} color="#6366F1" />
-                <Text variant="headlineMedium" style={styles.statNumber}>
-                  {totalBranches}
-                </Text>
-                <Text variant="bodySmall" style={styles.statLabel}>
-                  Total Branches
-                </Text>
-              </Card.Content>
-            </Card>
+        {/* Overview Stats */}
+        <OverviewStatsSection
+          totalBranches={totalBranches}
+          activeBranches={activeBranches}
+          studentStats={studentStats}
+          loading={loading && branches.length === 0}
+        />
 
-            <Card style={styles.statCard}>
-              <Card.Content style={styles.statContent}>
-                <MaterialCommunityIcons name="check-circle" size={28} color="#10B981" />
-                <Text variant="headlineMedium" style={[styles.statNumber, { color: '#10B981' }]}>
-                  {activeBranches}
-                </Text>
-                <Text variant="bodySmall" style={styles.statLabel}>
-                  Active Branches
-                </Text>
-              </Card.Content>
-            </Card>
-          </View>
-        </View>
+        {/* Quick Insights */}
+        <QuickInsightsCard
+          totalBranches={totalBranches}
+          activeBranches={activeBranches}
+          studentStats={studentStats}
+          branches={branches}
+        />
+
+        {/* Storage Monitoring */}
+        <StorageMonitoringSection />
 
         {/* Quick Actions */}
-        <View style={styles.section}>
-          <Text variant="titleMedium" style={styles.sectionTitle}>
-            ⚡ Quick Actions
-          </Text>
-          <View style={styles.actionsGrid}>
-            <TouchableOpacity
-              onPress={() => router.push('/(admin)/(tabs)/branches')}
-              activeOpacity={0.8}
-              style={styles.actionCard}
-            >
-              <Card style={styles.actionCardInner}>
-                <Card.Content style={styles.actionContent}>
-                  <View style={[styles.actionIconCircle, { backgroundColor: '#F3E8FF' }]}>
-                    <MaterialCommunityIcons name="office-building-outline" size={32} color="#7B2CBF" />
-                  </View>
-                  <Text variant="titleSmall" style={styles.actionLabel}>
-                    Branches
-                  </Text>
-                  <Text variant="bodySmall" style={styles.actionSubtext}>
-                    Manage branches
-                  </Text>
-                </Card.Content>
-              </Card>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <QuickActionsSection />
+
+        {/* Alerts */}
+        <AlertsSection branches={branches} studentStats={studentStats} />
 
         {/* Recent Branches */}
-        {branches.length > 0 && (
-          <View style={styles.section}>
-            <Text variant="titleMedium" style={styles.sectionTitle}>
-              📋 Recent Branches
-            </Text>
-            {branches.slice(0, 3).map((branch) => (
-              <Card key={branch.id} style={styles.branchCard}>
-                <Card.Content>
-                  <View style={styles.branchRow}>
-                    <View style={styles.branchInfo}>
-                      <Text variant="titleSmall" style={styles.branchName}>
-                        {branch.name}
-                      </Text>
-                      {branch.code && (
-                        <Text variant="bodySmall" style={styles.branchCode}>
-                          {branch.code}
-                        </Text>
-                      )}
-                    </View>
-                    <View
-                      style={[
-                        styles.statusBadge,
-                        branch.status === 'active' ? styles.activeBadge : styles.inactiveBadge,
-                      ]}
-                    >
-                      <Text
-                        variant="labelSmall"
-                        style={[
-                          styles.statusText,
-                          branch.status === 'active' ? styles.activeText : styles.inactiveText,
-                        ]}
-                      >
-                        {branch.status}
-                      </Text>
-                    </View>
-                  </View>
-                </Card.Content>
-              </Card>
-            ))}
-          </View>
-        )}
+        <RecentBranchesSection branches={branches} />
+
+        {/* All Features */}
+        <AllFeaturesSection />
 
         {/* Bottom Padding for Tab Bar */}
         <View style={styles.bottomPadding} />
@@ -244,189 +190,17 @@ export default function AdminDashboardScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
-  },
-  header: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  headerLeft: {
-    flex: 1,
-  },
-  logoWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  logoCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F3E8FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  brandName: {
-    color: '#1F2937',
-    fontWeight: '700',
-    fontSize: 22,
-    letterSpacing: -0.3,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  headerButton: {
-    padding: 4,
+    backgroundColor: COLORS.background,
   },
   scrollView: {
     flex: 1,
   },
   content: {
-    padding: 16,
-    paddingTop: 0,
+    padding: SPACING.lg,
+    paddingTop: SPACING.lg,
     paddingBottom: 80,
   },
-  welcomeSection: {
-    marginBottom: 24,
-    paddingTop: 16,
-  },
-  welcomeText: {
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 4,
-  },
-  dateText: {
-    color: '#6B7280',
-    fontSize: 14,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontWeight: '600',
-    color: '#1A1A1A',
-    marginBottom: 12,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  statCard: {
-    flex: 1,
-    elevation: 2,
-    borderRadius: 12,
-    backgroundColor: '#fff',
-  },
-  statContent: {
-    padding: 16,
-    alignItems: 'center',
-  },
-  statNumber: {
-    fontWeight: 'bold',
-    color: '#6366F1',
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  statLabel: {
-    color: '#666',
-    textAlign: 'center',
-  },
-  actionsGrid: {
-    flexDirection: 'row',
-    gap: 12,
-    flexWrap: 'wrap',
-  },
-  actionCard: {
-    flex: 1,
-    minWidth: '45%',
-  },
-  actionCardInner: {
-    elevation: 2,
-    borderRadius: 12,
-    backgroundColor: '#fff',
-  },
-  actionContent: {
-    padding: 16,
-    alignItems: 'center',
-  },
-  actionIconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  actionLabel: {
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 4,
-    textAlign: 'center',
-  },
-  actionSubtext: {
-    color: '#6B7280',
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  branchCard: {
-    marginBottom: 12,
-    elevation: 2,
-    borderRadius: 12,
-    backgroundColor: '#fff',
-  },
-  branchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  branchInfo: {
-    flex: 1,
-  },
-  branchName: {
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 4,
-  },
-  branchCode: {
-    color: '#6B7280',
-    fontSize: 12,
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  activeBadge: {
-    backgroundColor: '#D1FAE5',
-  },
-  inactiveBadge: {
-    backgroundColor: '#FEF3C7',
-  },
-  statusText: {
-    fontWeight: '600',
-    fontSize: 11,
-  },
-  activeText: {
-    color: '#065F46',
-  },
-  inactiveText: {
-    color: '#D97706',
-  },
   bottomPadding: {
-    height: 20,
-  },
-  fab: {
-    position: 'absolute',
-    right: 16,
-    backgroundColor: '#7B2CBF',
+    height: SPACING.lg,
   },
 })
-

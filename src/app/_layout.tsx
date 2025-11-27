@@ -29,6 +29,7 @@ function InnerLayout() {
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="index" />
             <Stack.Screen name="(auth)" />
+            <Stack.Screen name="(public)" />
             <Stack.Screen name="(admin)" />
             <Stack.Screen name="(student)" />
           </Stack>

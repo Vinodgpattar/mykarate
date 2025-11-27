@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { logger } from './logger'
 import * as FileSystem from 'expo-file-system/legacy'
+import { compressImage } from './image-compression'
 
 export interface Student {
   id: string
@@ -48,6 +49,10 @@ export interface CreateStudentData {
   email: string
   branchId: string
   phone?: string
+  paymentType?: 'monthly' | 'yearly' // Payment preference for fees
+  enrollmentDate?: string // Join/enrollment date for fee calculation
+  registrationPaid?: boolean // Whether registration fee is already paid
+  currentBelt?: string // Current belt level (defaults to 'White' if not provided)
 }
 
 export interface UpdateStudentData {
@@ -329,7 +334,7 @@ export async function createStudent(
         phone: data.phone?.trim() || null,
         branch_id: data.branchId,
         user_id: userId,
-        current_belt: 'White',
+        current_belt: data.currentBelt || 'White',
         profile_completed: false,
         is_active: true,
         created_by_id: createdById,
@@ -357,7 +362,7 @@ export async function createStudent(
             phone: data.phone?.trim() || null,
             branch_id: data.branchId,
             user_id: userId,
-            current_belt: 'White',
+            current_belt: data.currentBelt || 'White',
             profile_completed: false,
             is_active: true,
             created_by_id: createdById,
@@ -398,6 +403,45 @@ export async function createStudent(
           }
         } catch (emailError) {
           logger.warn('Failed to send welcome email', emailError as Error)
+        }
+
+        // Initialize fees if payment type is provided
+        if (data.paymentType) {
+          try {
+            const { initializeStudentFees } = await import('./fees')
+            const enrollmentDate = data.enrollmentDate || new Date().toISOString().split('T')[0]
+            await initializeStudentFees(retryData.id, data.paymentType, enrollmentDate)
+            
+            // Mark registration fee as paid if already paid
+            if (data.registrationPaid) {
+              const { supabaseAdmin } = await import('./supabase')
+              if (supabaseAdmin) {
+                // Find the registration fee and mark it as paid
+                const { data: regFee } = await supabaseAdmin
+                  .from('student_fees')
+                  .select('id, amount')
+                  .eq('student_id', retryData.id)
+                  .eq('fee_type', 'registration')
+                  .maybeSingle()
+                
+                if (regFee) {
+                  await supabaseAdmin
+                    .from('student_fees')
+                    .update({
+                      status: 'paid',
+                      paid_amount: regFee.amount,
+                      paid_at: new Date(enrollmentDate).toISOString(),
+                    })
+                    .eq('id', regFee.id)
+                  logger.info('Registration fee marked as paid (after retry)', { studentId: retryData.id })
+                }
+              }
+            }
+            
+            logger.info('Student fees initialized (after retry)', { studentId: retryData.id, paymentType: data.paymentType })
+          } catch (feeError) {
+            logger.error('Error initializing student fees (after retry)', feeError as Error)
+          }
         }
 
         logger.info('Student created successfully (after retry)', { studentId: retryStudentId, email: normalizedEmail })
@@ -442,6 +486,46 @@ export async function createStudent(
     } catch (emailError) {
       logger.warn('Failed to send welcome email', emailError as Error)
       // Don't fail the operation if email fails
+    }
+
+    // Initialize fees if payment type is provided
+    if (data.paymentType) {
+      try {
+        const { initializeStudentFees } = await import('./fees')
+        const enrollmentDate = data.enrollmentDate || new Date().toISOString().split('T')[0]
+        await initializeStudentFees(studentData.id, data.paymentType, enrollmentDate)
+        
+        // Mark registration fee as paid if already paid
+        if (data.registrationPaid) {
+          const { supabaseAdmin } = await import('./supabase')
+          if (supabaseAdmin) {
+            // Find the registration fee and mark it as paid
+            const { data: regFee } = await supabaseAdmin
+              .from('student_fees')
+              .select('id, amount')
+              .eq('student_id', studentData.id)
+              .eq('fee_type', 'registration')
+              .maybeSingle()
+            
+            if (regFee) {
+              await supabaseAdmin
+                .from('student_fees')
+                .update({
+                  status: 'paid',
+                  paid_amount: regFee.amount,
+                  paid_at: new Date(enrollmentDate).toISOString(),
+                })
+                .eq('id', regFee.id)
+              logger.info('Registration fee marked as paid', { studentId: studentData.id })
+            }
+          }
+        }
+        
+        logger.info('Student fees initialized', { studentId: studentData.id, paymentType: data.paymentType })
+      } catch (feeError) {
+        // Log but don't fail student creation if fee initialization fails
+        logger.error('Error initializing student fees', feeError as Error)
+      }
     }
 
     logger.info('Student created successfully', { studentId, email: normalizedEmail })
@@ -725,13 +809,15 @@ export async function deleteStudent(
 
       // Delete profile first (will cascade from user_id)
       if (student.student.user_id) {
-        await supabaseAdmin
-          .from('profiles')
-          .delete()
-          .eq('user_id', student.student.user_id)
-          .catch(() => {
-            // Ignore errors
-          })
+        try {
+          await supabaseAdmin
+            .from('profiles')
+            .delete()
+            .eq('user_id', student.student.user_id)
+        } catch (error) {
+          // Ignore errors - profile might not exist
+          logger.warn('Failed to delete profile', { userId: student.student.user_id, error })
+        }
       }
 
       // Delete auth user if exists
@@ -919,8 +1005,17 @@ export async function uploadStudentPhoto(
       }
     }
 
-    // Read file as ArrayBuffer
-    const base64 = await FileSystem.readAsStringAsync(imageUri, {
+    // Compress image before upload
+    logger.info('Compressing student photo before upload...')
+    const { uri: compressedUri, size: compressedSize, originalSize } = await compressImage(imageUri, 'profile')
+    logger.info('Student photo compressed', {
+      originalSize,
+      compressedSize,
+      reduction: `${((1 - compressedSize / originalSize) * 100).toFixed(1)}%`,
+    })
+
+    // Read compressed file as ArrayBuffer
+    const base64 = await FileSystem.readAsStringAsync(compressedUri, {
       encoding: FileSystem.EncodingType.Base64,
     })
 
@@ -997,8 +1092,17 @@ export async function uploadAadharCard(
       }
     }
 
-    // Read file as ArrayBuffer
-    const base64 = await FileSystem.readAsStringAsync(imageUri, {
+    // Compress image before upload (document type for Aadhar cards)
+    logger.info('Compressing Aadhar card before upload...')
+    const { uri: compressedUri, size: compressedSize, originalSize } = await compressImage(imageUri, 'document')
+    logger.info('Aadhar card compressed', {
+      originalSize,
+      compressedSize,
+      reduction: `${((1 - compressedSize / originalSize) * 100).toFixed(1)}%`,
+    })
+
+    // Read compressed file as ArrayBuffer
+    const base64 = await FileSystem.readAsStringAsync(compressedUri, {
       encoding: FileSystem.EncodingType.Base64,
     })
 

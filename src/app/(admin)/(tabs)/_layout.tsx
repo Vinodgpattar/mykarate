@@ -47,15 +47,6 @@ export default function AdminTabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="student-informs"
-        options={{
-          title: 'Student Informs',
-          tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="information-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="more"
         options={{
           title: 'More',
@@ -122,6 +113,60 @@ export default function AdminTabsLayout() {
         name="leave-inform-detail"
         options={{
           href: null, // Hide from tabs
+        }}
+      />
+      <Tabs.Screen
+        name="student-informs"
+        options={{
+          href: null, // Hide from tabs, accessed via dashboard/flows
+        }}
+      />
+      <Tabs.Screen
+        name="mark-attendance"
+        options={{
+          href: null, // Hide from tabs, accessed via dashboard quick actions
+        }}
+      />
+      <Tabs.Screen
+        name="fee-management"
+        options={{
+          href: null, // Hide from tabs, accessed via dashboard/flows
+        }}
+      />
+      <Tabs.Screen
+        name="student-fees"
+        options={{
+          href: null, // Hide from tabs, accessed via dashboard/flows
+        }}
+      />
+      <Tabs.Screen
+        name="public-gallery"
+        options={{
+          href: null, // Hide from tabs, accessed via dashboard/More
+        }}
+      />
+      <Tabs.Screen
+        name="record-payment"
+        options={{
+          href: null, // Hide from tabs
+        }}
+      />
+      <Tabs.Screen
+        name="belt-grading"
+        options={{
+          href: null, // Hide from tabs
+        }}
+      />
+      <Tabs.Screen
+        name="admin-profile"
+        options={{
+          href: null, // Hide from tabs, accessed via More screen
+        }}
+      />
+      <Tabs.Screen
+        name="account-settings"
+        options={{
+          href: null, // Hide from tabs, accessed via header account icon
         }}
       />
     </Tabs>

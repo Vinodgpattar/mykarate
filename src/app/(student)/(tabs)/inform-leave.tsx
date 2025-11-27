@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native'
-import { Text, Card, Button, ActivityIndicator, Chip, FAB } from 'react-native-paper'
-import { useRouter } from 'expo-router'
+import { Text, Card, ActivityIndicator, Chip, FAB } from 'react-native-paper'
+import { useRouter, useFocusEffect } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { formatDistanceToNow } from 'date-fns'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -9,6 +9,8 @@ import { useAuth } from '@/context/AuthContext'
 import { getStudentByUserId } from '@/lib/students'
 import { getStudentLeaveInforms, type LeaveInform } from '@/lib/student-leave-informs'
 import { logger } from '@/lib/logger'
+import { StudentHeader } from '@/components/student/StudentHeader'
+import { COLORS, SPACING, RADIUS, ELEVATION } from '@/lib/design-system'
 
 export default function InformLeaveScreen() {
   const router = useRouter()
@@ -19,6 +21,10 @@ export default function InformLeaveScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const [studentId, setStudentId] = useState<string | null>(null)
 
+  // Refs to prevent unnecessary reloads
+  const lastLoadTimeRef = useRef<number>(0)
+  const isLoadingRef = useRef(false)
+
   useEffect(() => {
     loadStudent()
   }, [user])
@@ -28,6 +34,26 @@ export default function InformLeaveScreen() {
       loadData()
     }
   }, [studentId])
+
+  // Auto-refresh when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (!studentId) return
+      
+      // Skip if just loaded or currently loading
+      const timeSinceLastLoad = Date.now() - lastLoadTimeRef.current
+      if (isLoadingRef.current || timeSinceLastLoad < 1000) {
+        return
+      }
+
+      // Reload data
+      isLoadingRef.current = true
+      loadData().finally(() => {
+        isLoadingRef.current = false
+        lastLoadTimeRef.current = Date.now()
+      })
+    }, [studentId])
+  )
 
   const loadStudent = async () => {
     if (!user?.id) return
@@ -60,6 +86,7 @@ export default function InformLeaveScreen() {
     } finally {
       setLoading(false)
       setRefreshing(false)
+      lastLoadTimeRef.current = Date.now()
     }
   }
 
@@ -93,29 +120,21 @@ export default function InformLeaveScreen() {
 
   if (loading && !studentId) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <View style={styles.header}>
-          <Text variant="headlineSmall" style={styles.title}>
-            Inform Leave
-          </Text>
-        </View>
+      <View style={styles.container}>
+        <StudentHeader title="Inform Leave" />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#7B2CBF" />
+          <ActivityIndicator size="large" color={COLORS.brandPurple} />
         </View>
       </View>
     )
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Text variant="headlineSmall" style={styles.title}>
-          Inform Leave
-        </Text>
-        <Text variant="bodyMedium" style={styles.subtitle}>
-          Let your teacher know when you can't attend class
-        </Text>
-      </View>
+    <View style={styles.container}>
+      <StudentHeader 
+        title="Inform Leave"
+        subtitle="Let your teacher know when you can't attend class"
+      />
 
       <ScrollView
         style={styles.scrollView}
@@ -129,7 +148,7 @@ export default function InformLeaveScreen() {
         ) : informs.length === 0 ? (
           <Card style={styles.emptyCard}>
             <Card.Content style={styles.emptyContent}>
-              <MaterialCommunityIcons name="information-outline" size={64} color="#9CA3AF" />
+              <MaterialCommunityIcons name="calendar-clock-outline" size={64} color={COLORS.textTertiary} />
               <Text variant="titleMedium" style={styles.emptyTitle}>
                 No Leave Informs Yet
               </Text>
@@ -153,7 +172,7 @@ export default function InformLeaveScreen() {
                 </Text>
                 {inform.approved_at && (
                   <View style={styles.approvedInfo}>
-                    <MaterialCommunityIcons name="check-circle" size={16} color="#10B981" />
+                    <MaterialCommunityIcons name="check-circle" size={16} color={COLORS.success} />
                     <Text variant="bodySmall" style={styles.approvedText}>
                       Approved {formatDistanceToNow(new Date(inform.approved_at), { addSuffix: true })}
                     </Text>
@@ -163,13 +182,15 @@ export default function InformLeaveScreen() {
             </Card>
           ))
         )}
+        <View style={styles.bottomPadding} />
       </ScrollView>
 
       <FAB
         icon="plus"
-        style={[styles.fab, { bottom: insets.bottom + 16 }]}
-        onPress={() => router.push('/(student)/create-leave-inform')}
+        style={[styles.fab, { bottom: insets.bottom + SPACING.lg }]}
+        onPress={() => router.push('/(student)/(tabs)/create-leave-inform')}
         label="Inform"
+        color={COLORS.surface}
       />
     </View>
   )
@@ -178,98 +199,93 @@ export default function InformLeaveScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  header: {
-    backgroundColor: '#FFFFFF',
-    padding: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  title: {
-    fontWeight: 'bold',
-    color: '#1A1A1A',
-    marginBottom: 4,
-  },
-  subtitle: {
-    color: '#6B7280',
+    backgroundColor: COLORS.background,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
+    padding: SPACING.lg,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 40,
+    paddingVertical: SPACING.xxl,
+  },
+  bottomPadding: {
+    height: 80,
   },
   emptyCard: {
-    marginTop: 40,
-    elevation: 0,
-    backgroundColor: '#FFFFFF',
+    marginTop: SPACING.xxl,
+    elevation: ELEVATION.none,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
   },
   emptyContent: {
     alignItems: 'center',
-    paddingVertical: 40,
+    paddingVertical: SPACING.xxl,
   },
   emptyTitle: {
-    marginTop: 16,
-    marginBottom: 8,
-    color: '#1A1A1A',
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.sm,
+    color: COLORS.textPrimary,
+    fontWeight: '600',
   },
   emptyText: {
     textAlign: 'center',
-    color: '#6B7280',
-    paddingHorizontal: 20,
+    color: COLORS.textSecondary,
+    paddingHorizontal: SPACING.xl,
   },
   card: {
-    marginBottom: 12,
-    elevation: 1,
-    backgroundColor: '#FFFFFF',
+    marginBottom: SPACING.md,
+    elevation: ELEVATION.sm,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: SPACING.md,
   },
   statusChip: {
     height: 28,
   },
   statusChipText: {
     fontSize: 12,
-    color: '#FFFFFF',
+    color: COLORS.surface,
     fontWeight: '600',
   },
   timestamp: {
-    color: '#9CA3AF',
+    color: COLORS.textTertiary,
+    fontSize: 12,
   },
   message: {
-    color: '#1A1A1A',
+    color: COLORS.textPrimary,
     lineHeight: 20,
-    marginBottom: 8,
+    marginBottom: SPACING.sm,
   },
   approvedInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
-    paddingTop: 8,
+    marginTop: SPACING.sm,
+    paddingTop: SPACING.sm,
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    borderTopColor: COLORS.border,
+    gap: SPACING.xs,
   },
   approvedText: {
-    color: '#10B981',
-    marginLeft: 6,
+    color: COLORS.success,
     fontWeight: '500',
+    fontSize: 12,
   },
   fab: {
     position: 'absolute',
-    right: 16,
-    backgroundColor: '#7B2CBF',
+    right: SPACING.lg,
+    backgroundColor: COLORS.brandPurple,
   },
 })
 

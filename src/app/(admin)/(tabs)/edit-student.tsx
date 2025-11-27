@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react'
 import { View, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from 'react-native'
-import { Text, TextInput, Button, Card, Snackbar, ActivityIndicator } from 'react-native-paper'
+import { Text, TextInput, Button, Card, Snackbar, ActivityIndicator, Menu } from 'react-native-paper'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useRouter, useLocalSearchParams } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { getStudentById, updateStudent, type UpdateStudentData } from '@/lib/students'
+import { BELT_LEVELS, getBeltDisplayName } from '@/lib/belts'
+import { DatePicker } from '@/components/shared/DatePicker'
+import { AdminHeader } from '@/components/admin/AdminHeader'
 
 export default function EditStudentScreen() {
   const router = useRouter()
@@ -35,6 +38,7 @@ export default function EditStudentScreen() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [snackbar, setSnackbar] = useState({ visible: false, message: '' })
+  const [beltMenuVisible, setBeltMenuVisible] = useState(false)
 
   useEffect(() => {
     if (studentId) {
@@ -114,7 +118,8 @@ export default function EditStudentScreen() {
         setSnackbar({ visible: true, message: result.error.message })
       } else {
         setSnackbar({ visible: true, message: 'Student updated successfully!' })
-        setTimeout(() => router.back(), 1500)
+        // Navigate to students tab instead of going back
+        setTimeout(() => router.push('/(admin)/(tabs)/students'), 1500)
       }
     } catch (err: any) {
       setSnackbar({ visible: true, message: err.message || 'Failed to update student' })
@@ -138,21 +143,13 @@ export default function EditStudentScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={insets.top}
     >
+      <AdminHeader title="Edit Student" showBackButton />
+
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Button icon="arrow-left" onPress={() => router.back()} mode="text" textColor="#666">
-            Back
-          </Button>
-          <Text variant="headlineSmall" style={styles.title}>
-            Edit Student
-          </Text>
-          <View style={{ width: 60 }} />
-        </View>
 
         {/* Personal Information */}
         <Card style={styles.card}>
@@ -198,15 +195,14 @@ export default function EditStudentScreen() {
               left={<TextInput.Icon icon="phone" />}
             />
 
-            <TextInput
+            <DatePicker
               label="Date of Birth"
               value={formData.dateOfBirth}
-              onChangeText={(text) => setFormData({ ...formData, dateOfBirth: text })}
-              mode="outlined"
-              placeholder="YYYY-MM-DD"
+              onChange={(date) => setFormData({ ...formData, dateOfBirth: date })}
+              placeholder="Select date of birth"
               style={styles.input}
               outlineStyle={styles.inputOutline}
-              left={<TextInput.Icon icon="calendar" />}
+              maximumDate={new Date()}
             />
 
             <TextInput
@@ -244,15 +240,37 @@ export default function EditStudentScreen() {
               left={<TextInput.Icon icon="card-account-details" />}
             />
 
-            <TextInput
-              label="Current Belt"
-              value={formData.currentBelt}
-              onChangeText={(text) => setFormData({ ...formData, currentBelt: text })}
-              mode="outlined"
-              style={styles.input}
-              outlineStyle={styles.inputOutline}
-              left={<TextInput.Icon icon="karate" />}
-            />
+            <Menu
+              visible={beltMenuVisible}
+              onDismiss={() => setBeltMenuVisible(false)}
+              anchor={
+                <Button
+                  mode="outlined"
+                  onPress={() => {
+                    if (beltMenuVisible) {
+                      setBeltMenuVisible(false)
+                    } else {
+                      setTimeout(() => setBeltMenuVisible(true), 50)
+                    }
+                  }}
+                  style={styles.input}
+                  icon="karate"
+                >
+                  {formData.currentBelt ? getBeltDisplayName(formData.currentBelt) : 'Select Current Belt'}
+                </Button>
+              }
+            >
+              {BELT_LEVELS.map((belt) => (
+                <Menu.Item
+                  key={belt}
+                  onPress={() => {
+                    setFormData({ ...formData, currentBelt: belt })
+                    setBeltMenuVisible(false)
+                  }}
+                  title={getBeltDisplayName(belt)}
+                />
+              ))}
+            </Menu>
           </Card.Content>
         </Card>
 
@@ -430,7 +448,7 @@ export default function EditStudentScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#FFF8E7',
   },
   scrollView: {
     flex: 1,
@@ -450,17 +468,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    paddingTop: 8,
-  },
-  title: {
-    fontWeight: 'bold',
-    color: '#1a1a1a',
   },
   card: {
     elevation: 2,
@@ -505,7 +512,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#FFF8E7',
   },
   loadingText: {
     marginTop: 16,

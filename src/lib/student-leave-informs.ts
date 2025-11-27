@@ -43,16 +43,22 @@ export async function createLeaveInform(
       return { inform: null, error: new Error('Message must be at least 10 characters') }
     }
 
-    // Get student info for notification
+    // Get student info and validate active status
     const { data: student, error: studentError } = await supabaseAdmin
       .from('students')
-      .select('first_name, last_name, student_id, user_id, branch_id')
+      .select('first_name, last_name, student_id, user_id, branch_id, is_active')
       .eq('id', studentId)
       .single()
 
     if (studentError || !student) {
       logger.error('Error fetching student', studentError as Error)
       return { inform: null, error: new Error('Student not found') }
+    }
+
+    // Validate student is active
+    if (!student.is_active) {
+      logger.warn('Inactive student attempted to create leave inform', { studentId })
+      return { inform: null, error: new Error('Only active students can create leave informs') }
     }
 
     // Create leave inform
@@ -148,12 +154,8 @@ export async function getAllLeaveInforms(options?: {
       query = query.eq('status', options.status)
     }
 
-    // Search by student name or message
-    if (options?.search) {
-      const searchTerm = `%${options.search}%`
-      query = query.or(`message.ilike.${searchTerm},student.first_name.ilike.${searchTerm},student.last_name.ilike.${searchTerm}`)
-    }
-
+    // Note: Search by student name requires client-side filtering
+    // Supabase doesn't support nested field search with .or() in this way
     const { data: informs, error } = await query
 
     if (error) {
@@ -161,7 +163,25 @@ export async function getAllLeaveInforms(options?: {
       return { informs: null, error: new Error(error.message) }
     }
 
-    return { informs: (informs || []) as LeaveInform[], error: null }
+    // Apply search filter client-side (for student name and message)
+    let filteredInforms = informs || []
+    if (options?.search && filteredInforms.length > 0) {
+      const searchTerm = options.search.toLowerCase()
+      filteredInforms = filteredInforms.filter((inform: any) => {
+        const message = (inform.message || '').toLowerCase()
+        const firstName = (inform.student?.first_name || '').toLowerCase()
+        const lastName = (inform.student?.last_name || '').toLowerCase()
+        const fullName = `${firstName} ${lastName}`.trim()
+        return (
+          message.includes(searchTerm) ||
+          firstName.includes(searchTerm) ||
+          lastName.includes(searchTerm) ||
+          fullName.includes(searchTerm)
+        )
+      })
+    }
+
+    return { informs: (filteredInforms || []) as LeaveInform[], error: null }
   } catch (error) {
     logger.error('Unexpected error fetching all leave informs', error as Error)
     return {
@@ -224,6 +244,20 @@ export async function approveLeaveInform(
       return { success: false, error: new Error('Service role key not configured') }
     }
 
+    // Verify admin has permission to approve
+    const { getProfileByUserId } = await import('./profiles')
+    const adminProfileResult = await getProfileByUserId(adminId)
+    if (adminProfileResult.error || !adminProfileResult.profile) {
+      logger.error('Error verifying admin profile', adminProfileResult.error || new Error('Profile not found'))
+      return { success: false, error: new Error('Failed to verify admin permissions') }
+    }
+
+    const adminProfile = adminProfileResult.profile
+    if (adminProfile.role !== 'super_admin' && adminProfile.role !== 'admin') {
+      logger.error('Unauthorized approval attempt', new Error(`User ${adminId} is not an admin`))
+      return { success: false, error: new Error('Only admins can approve leave informs') }
+    }
+
     // Get inform with student info
     const { data: inform, error: fetchError } = await supabaseAdmin
       .from('student_leave_informs')
@@ -232,7 +266,8 @@ export async function approveLeaveInform(
         student:students!student_leave_informs_student_id_fkey(
           first_name,
           last_name,
-          user_id
+          user_id,
+          branch_id
         )
       `)
       .eq('id', informId)
@@ -242,6 +277,18 @@ export async function approveLeaveInform(
     if (fetchError || !inform) {
       logger.error('Error fetching leave inform for approval', fetchError as Error)
       return { success: false, error: new Error('Leave inform not found or already processed') }
+    }
+
+    // Validate branch admin can only approve their branch students
+    if (adminProfile.role === 'admin') {
+      const student = inform.student as { branch_id: string | null } | null
+      if (!adminProfile.branchId || student?.branch_id !== adminProfile.branchId) {
+        logger.error('Branch admin attempted to approve inform from different branch', {
+          adminBranchId: adminProfile.branchId,
+          studentBranchId: student?.branch_id,
+        })
+        return { success: false, error: new Error('You can only approve leave informs for students in your branch') }
+      }
     }
 
     // Update inform status
