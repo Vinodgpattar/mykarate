@@ -2,7 +2,7 @@
   "expo": {
     "name": "Karate",
     "slug": "karate-dojo-mobile",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "icon": "./assets/karateicon.png",
