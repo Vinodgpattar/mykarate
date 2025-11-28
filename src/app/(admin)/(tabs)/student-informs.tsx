@@ -1,17 +1,19 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Image } from 'react-native'
+import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Image, Alert } from 'react-native'
 import { Text, Card, Button, ActivityIndicator, Chip, Searchbar, Menu, Divider } from 'react-native-paper'
 import { useRouter, useFocusEffect } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { formatDistanceToNow } from 'date-fns'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { getAllLeaveInforms, type LeaveInform } from '@/lib/student-leave-informs'
+import { useAuth } from '@/context/AuthContext'
+import { getAllLeaveInforms, getPendingInformsCount, deleteLeaveInform, type LeaveInform } from '@/lib/student-leave-informs'
 import { logger } from '@/lib/logger'
 import { AdminHeader } from '@/components/admin/AdminHeader'
 
 export default function StudentInformsScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
+  const { user } = useAuth()
   const [informs, setInforms] = useState<LeaveInform[]>([])
   const [filteredInforms, setFilteredInforms] = useState<LeaveInform[]>([])
   const [loading, setLoading] = useState(true)
@@ -19,6 +21,8 @@ export default function StudentInformsScreen() {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved'>('all')
   const [statusMenuVisible, setStatusMenuVisible] = useState(false)
+  const [pendingCount, setPendingCount] = useState(0)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   // Refs to prevent unnecessary reloads
   const lastLoadTimeRef = useRef<number>(0)
@@ -41,14 +45,22 @@ export default function StudentInformsScreen() {
         return
       }
 
-      // Reload data
+      // Reload data and count
       isLoadingRef.current = true
       loadData().finally(() => {
         isLoadingRef.current = false
         lastLoadTimeRef.current = Date.now()
       })
-    }, [statusFilter, searchQuery])
+      loadPendingCount()
+    }, [statusFilter, searchQuery, loadPendingCount])
   )
+
+  const loadPendingCount = useCallback(async () => {
+    const result = await getPendingInformsCount()
+    if (!result.error) {
+      setPendingCount(result.count)
+    }
+  }, [])
 
   const loadData = async () => {
     try {
@@ -64,6 +76,8 @@ export default function StudentInformsScreen() {
       }
 
       setInforms(result.informs || [])
+      // Also refresh pending count when data is loaded
+      await loadPendingCount()
     } catch (error) {
       logger.error('Unexpected error loading leave informs', error as Error)
     } finally {
@@ -137,11 +151,52 @@ export default function StudentInformsScreen() {
     return inform.student?.student_photo_url || null
   }
 
+  const handleDelete = async (informId: string, studentName: string) => {
+    if (!user?.id) {
+      Alert.alert('Error', 'User not found')
+      return
+    }
+
+    Alert.alert(
+      'Delete Leave Inform',
+      `Are you sure you want to delete the leave inform from ${studentName}? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeletingId(informId)
+            try {
+              const result = await deleteLeaveInform(informId, user.id)
+              if (result.success) {
+                // Remove from local state
+                setInforms((prev) => prev.filter((inform) => inform.id !== informId))
+                setFilteredInforms((prev) => prev.filter((inform) => inform.id !== informId))
+                // Refresh pending count
+                await loadPendingCount()
+                logger.info('Leave inform deleted successfully', { informId })
+              } else {
+                Alert.alert('Error', result.error?.message || 'Failed to delete leave inform')
+              }
+            } catch (error) {
+              logger.error('Unexpected error deleting leave inform', error as Error)
+              Alert.alert('Error', 'Failed to delete leave inform')
+            } finally {
+              setDeletingId(null)
+            }
+          },
+        },
+      ]
+    )
+  }
+
   return (
     <View style={styles.container}>
       <AdminHeader
         title="Student Informs"
         subtitle="Students have informed about their absence"
+        pendingInformsCount={pendingCount}
       />
 
       <View style={styles.filters}>
@@ -202,59 +257,80 @@ export default function StudentInformsScreen() {
             </Card.Content>
           </Card>
         ) : (
-          filteredInforms.map((inform) => (
-            <TouchableOpacity
-              key={inform.id}
-              onPress={() => router.push(`/(admin)/(tabs)/leave-inform-detail?id=${inform.id}`)}
-            >
-              <Card style={styles.card}>
-                <Card.Content>
-                  <View style={styles.cardHeader}>
-                    <View style={styles.studentInfo}>
-                      {getStudentPhoto(inform) ? (
-                        <Image
-                          source={{ uri: getStudentPhoto(inform)! }}
-                          style={styles.studentPhoto}
-                        />
-                      ) : (
-                        <View style={[styles.studentPhoto, styles.placeholderPhoto]}>
-                          <MaterialCommunityIcons name="account" size={24} color="#9CA3AF" />
-                        </View>
-                      )}
-                      <View style={styles.studentDetails}>
-                        <Text variant="titleMedium" style={styles.studentName}>
-                          {getStudentName(inform)}
-                        </Text>
-                        {inform.student?.student_id && (
-                          <Text variant="bodySmall" style={styles.studentId}>
-                            {inform.student.student_id}
-                          </Text>
+          filteredInforms.map((inform) => {
+            const studentName = getStudentName(inform)
+            return (
+              <TouchableOpacity
+                key={inform.id}
+                onPress={() => router.push(`/(admin)/(tabs)/leave-inform-detail?id=${inform.id}`)}
+                activeOpacity={0.8}
+              >
+                <Card style={styles.card}>
+                  <Card.Content>
+                    <View style={styles.cardHeader}>
+                      <View style={styles.studentInfo}>
+                        {getStudentPhoto(inform) ? (
+                          <Image
+                            source={{ uri: getStudentPhoto(inform)! }}
+                            style={styles.studentPhoto}
+                          />
+                        ) : (
+                          <View style={[styles.studentPhoto, styles.placeholderPhoto]}>
+                            <MaterialCommunityIcons name="account" size={24} color="#9CA3AF" />
+                          </View>
                         )}
+                        <View style={styles.studentDetails}>
+                          <Text variant="titleMedium" style={styles.studentName}>
+                            {studentName}
+                          </Text>
+                          {inform.student?.student_id && (
+                            <Text variant="bodySmall" style={styles.studentId}>
+                              {inform.student.student_id}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                      <View style={styles.headerRight}>
+                        {getStatusBadge(inform.status)}
+                        <TouchableOpacity
+                          onPress={(e) => {
+                            e.stopPropagation()
+                            handleDelete(inform.id, studentName)
+                          }}
+                          disabled={deletingId === inform.id}
+                          style={styles.deleteButton}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                          {deletingId === inform.id ? (
+                            <ActivityIndicator size="small" color="#EF4444" />
+                          ) : (
+                            <MaterialCommunityIcons name="delete-outline" size={20} color="#EF4444" />
+                          )}
+                        </TouchableOpacity>
                       </View>
                     </View>
-                    {getStatusBadge(inform.status)}
-                  </View>
-                  <Text variant="bodyMedium" style={styles.message} numberOfLines={2}>
-                    {inform.message}
-                  </Text>
-                  <View style={styles.cardFooter}>
-                    <Text variant="bodySmall" style={styles.timestamp}>
-                      {formatDistanceToNow(new Date(inform.created_at), { addSuffix: true })}
+                    <Text variant="bodyMedium" style={styles.message} numberOfLines={2}>
+                      {inform.message}
                     </Text>
-                    {inform.status === 'pending' && (
-                      <Chip
-                        icon="alert-circle"
-                        style={styles.newChip}
-                        textStyle={styles.newChipText}
-                      >
-                        New
-                      </Chip>
-                    )}
-                  </View>
-                </Card.Content>
-              </Card>
-            </TouchableOpacity>
-          ))
+                    <View style={styles.cardFooter}>
+                      <Text variant="bodySmall" style={styles.timestamp}>
+                        {formatDistanceToNow(new Date(inform.created_at), { addSuffix: true })}
+                      </Text>
+                      {inform.status === 'pending' && (
+                        <Chip
+                          icon="alert-circle"
+                          style={styles.newChip}
+                          textStyle={styles.newChipText}
+                        >
+                          New
+                        </Chip>
+                      )}
+                    </View>
+                  </Card.Content>
+                </Card>
+              </TouchableOpacity>
+            )
+          })
         )}
       </ScrollView>
     </View>
@@ -326,6 +402,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 12,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  deleteButton: {
+    padding: 4,
+    borderRadius: 4,
+    backgroundColor: '#FEE2E2',
   },
   studentInfo: {
     flexDirection: 'row',

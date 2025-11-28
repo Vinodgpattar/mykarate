@@ -9,6 +9,9 @@ import { getStudentNotifications, markNotificationAsRead, markAllNotificationsAs
 import { logger } from '@/lib/logger'
 import { StudentHeader } from '@/components/student/StudentHeader'
 import { COLORS, SPACING, RADIUS, ELEVATION } from '@/lib/design-system'
+import { useNotifications } from '@/context/NotificationContext'
+import { Card } from 'react-native-paper'
+import { Linking, Platform } from 'react-native'
 
 const TYPE_ICONS: Record<string, string> = {
   announcement: 'bullhorn',
@@ -34,6 +37,7 @@ const TYPE_COLORS: Record<string, string[]> = {
 
 export default function StudentNotificationsScreen() {
   const router = useRouter()
+  const { permissionsGranted, requestPermissions } = useNotifications()
   const [notifications, setNotifications] = useState<StudentNotification[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -126,6 +130,26 @@ export default function StudentNotificationsScreen() {
     }
   }
 
+  const handleRequestPermissions = async () => {
+    const granted = await requestPermissions()
+    if (!granted) {
+      // If permission denied, open app settings
+      if (Platform.OS === 'ios') {
+        Linking.openURL('app-settings:')
+      } else {
+        Linking.openSettings()
+      }
+    }
+  }
+
+  const openAppSettings = () => {
+    if (Platform.OS === 'ios') {
+      Linking.openURL('app-settings:')
+    } else {
+      Linking.openSettings()
+    }
+  }
+
   return (
     <View style={styles.container}>
       <StudentHeader 
@@ -145,6 +169,45 @@ export default function StudentNotificationsScreen() {
             Mark All Read
           </Button>
         </View>
+      )}
+
+      {/* Permission Banner */}
+      {!permissionsGranted && (
+        <Card style={styles.permissionBanner}>
+          <Card.Content style={styles.permissionContent}>
+            <View style={styles.permissionRow}>
+              <MaterialCommunityIcons name="bell-off" size={24} color="#F59E0B" />
+              <View style={styles.permissionTextContainer}>
+                <Text variant="titleSmall" style={styles.permissionTitle}>
+                  Enable Notifications
+                </Text>
+                <Text variant="bodySmall" style={styles.permissionText}>
+                  Get instant alerts when admin sends announcements
+                </Text>
+              </View>
+            </View>
+            <View style={styles.permissionActions}>
+              <Button
+                mode="contained"
+                onPress={handleRequestPermissions}
+                buttonColor={COLORS.brandPurple}
+                compact
+                style={styles.permissionButton}
+              >
+                Enable
+              </Button>
+              <Button
+                mode="text"
+                onPress={openAppSettings}
+                textColor={COLORS.textSecondary}
+                compact
+                style={styles.permissionButton}
+              >
+                Settings
+              </Button>
+            </View>
+          </Card.Content>
+        </Card>
       )}
 
       {/* Notifications List */}
@@ -361,6 +424,43 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: '#fff',
     marginTop: 2,
+  },
+  permissionBanner: {
+    margin: SPACING.lg,
+    marginBottom: SPACING.md,
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    elevation: 2,
+  },
+  permissionContent: {
+    padding: SPACING.md,
+  },
+  permissionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  permissionTextContainer: {
+    flex: 1,
+  },
+  permissionTitle: {
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.xs,
+  },
+  permissionText: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+  },
+  permissionActions: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    justifyContent: 'flex-end',
+  },
+  permissionButton: {
+    minWidth: 80,
   },
 })
 

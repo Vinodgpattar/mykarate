@@ -774,68 +774,198 @@ export async function deleteStudent(
 
     if (hardDelete) {
       // Hard delete: Remove everything
-      // Delete files from storage (if URLs exist)
-      const filesToDelete: string[] = []
-      
-      if (student.student.student_photo_url) {
-        // Extract file path from URL
-        // URL format: https://project.supabase.co/storage/v1/object/public/student-documents/photos/{studentId}/file.jpg
-        const url = student.student.student_photo_url
-        const match = url.match(/\/student-documents\/(.+)$/)
-        if (match && match[1]) {
-          filesToDelete.push(match[1])
-        }
-      }
-      
-      if (student.student.aadhar_card_url) {
-        // Extract file path from URL
-        const url = student.student.aadhar_card_url
-        const match = url.match(/\/student-documents\/(.+)$/)
-        if (match && match[1]) {
-          filesToDelete.push(match[1])
-        }
-      }
+      // IMPORTANT: Order matters due to foreign key constraints
+      // 1. Delete student record FIRST (cascades to attendance, fees, leave informs, etc.)
+      // 2. Validate and delete profile (check for RESTRICT constraints)
+      // 3. Delete auth user (cascades to profile if still exists)
+      // 4. Delete storage files (non-critical, can fail)
 
-      // Delete files from storage (non-blocking)
-      if (filesToDelete.length > 0) {
-        try {
-          await supabaseAdmin.storage.from('student-documents').remove(filesToDelete)
-          logger.info('Deleted student files from storage', { studentId, files: filesToDelete.length })
-        } catch (storageError) {
-          // Log but don't fail - file deletion is optional
-          logger.warn('Failed to delete student files from storage', { studentId, error: storageError })
-        }
-      }
+      const userId = student.student.user_id
+      let studentDeleted = false
+      let profileDeleted = false
+      let authUserDeleted = false
 
-      // Delete profile first (will cascade from user_id)
-      if (student.student.user_id) {
-        try {
-          await supabaseAdmin
-            .from('profiles')
-            .delete()
-            .eq('user_id', student.student.user_id)
-        } catch (error) {
-          // Ignore errors - profile might not exist
-          logger.warn('Failed to delete profile', { userId: student.student.user_id, error })
-        }
-      }
+      try {
+        // Step 1: Delete student record FIRST
+        // This will cascade delete: attendance_records, student_fees, fee_payments, 
+        // belt_gradings, student_leave_informs, password_reset_tokens
+        const { error: studentError } = await supabaseAdmin
+          .from('students')
+          .delete()
+          .eq('id', studentId)
 
-      // Delete auth user if exists
-      if (student.student.user_id) {
-        await supabaseAdmin.auth.admin.deleteUser(student.student.user_id).catch(() => {
-          // Ignore errors
+        if (studentError) {
+          logger.error('Error deleting student record', studentError as Error)
+          return { success: false, error: new Error(`Failed to delete student: ${studentError.message}`) }
+        }
+
+        studentDeleted = true
+        logger.info('Student record deleted successfully', { studentId })
+
+        // Step 2: Validate and delete profile
+        // Check for RESTRICT constraints (attendance_records.marked_by)
+        if (userId) {
+          // Check if profile is referenced by attendance records
+          const { count: attendanceCount, error: countError } = await supabaseAdmin
+            .from('attendance_records')
+            .select('*', { count: 'exact', head: true })
+            .eq('marked_by', userId)
+
+          if (countError) {
+            logger.warn('Error checking attendance records for profile', { userId, error: countError })
+            // Continue anyway - will try to delete
+          } else if (attendanceCount && attendanceCount > 0) {
+            // Profile is referenced by attendance records from other students
+            // This shouldn't happen for students, but could for admins who became students
+            logger.warn('Profile is referenced by attendance records', {
+              userId,
+              count: attendanceCount,
+              message: 'Profile deletion may fail due to RESTRICT constraint'
+            })
+            
+            // Try to delete anyway - if it fails, auth user deletion will handle it via CASCADE
+            try {
+              const { error: profileError } = await supabaseAdmin
+                .from('profiles')
+                .delete()
+                .eq('user_id', userId)
+
+              if (profileError) {
+                logger.warn('Profile deletion failed (expected due to RESTRICT constraint)', {
+                  userId,
+                  error: profileError,
+                  message: 'Will be handled by auth user CASCADE deletion'
+                })
+                // Don't fail - auth user deletion will cascade delete it
+              } else {
+                profileDeleted = true
+                logger.info('Profile deleted successfully', { userId })
+              }
+            } catch (profileError) {
+              logger.warn('Exception during profile deletion', {
+                userId,
+                error: profileError instanceof Error ? profileError : new Error(String(profileError))
+              })
+              // Continue - auth user deletion will handle it
+            }
+          } else {
+            // Safe to delete profile - no attendance records reference it
+            try {
+              const { error: profileError } = await supabaseAdmin
+                .from('profiles')
+                .delete()
+                .eq('user_id', userId)
+
+              if (profileError) {
+                logger.error('Error deleting profile', profileError as Error)
+                // Don't fail yet - try auth user deletion which will cascade
+              } else {
+                profileDeleted = true
+                logger.info('Profile deleted successfully', { userId })
+              }
+            } catch (profileError) {
+              logger.error('Exception during profile deletion', {
+                userId,
+                error: profileError instanceof Error ? profileError : new Error(String(profileError))
+              })
+              // Continue - auth user deletion will handle it
+            }
+          }
+
+          // Step 3: Delete auth user
+          // This will CASCADE delete profile if it still exists
+          try {
+            await supabaseAdmin.auth.admin.deleteUser(userId)
+            authUserDeleted = true
+            logger.info('Auth user deleted successfully', { userId })
+            
+            // If profile wasn't deleted before, it's now deleted via CASCADE
+            if (!profileDeleted) {
+              logger.info('Profile deleted via CASCADE from auth user deletion', { userId })
+            }
+          } catch (authError) {
+            logger.error('Error deleting auth user', {
+              userId,
+              error: authError instanceof Error ? authError : new Error(String(authError))
+            })
+            // This is critical - return error
+            return {
+              success: false,
+              error: new Error(`Failed to delete authentication user: ${authError instanceof Error ? authError.message : String(authError)}`)
+            }
+          }
+        }
+
+        // Step 4: Delete storage files (non-critical, can fail without affecting deletion)
+        const filesToDelete: string[] = []
+        
+        if (student.student.student_photo_url) {
+          // Extract file path from URL
+          // URL format: https://project.supabase.co/storage/v1/object/public/student-documents/photos/{studentId}/file.jpg
+          const url = student.student.student_photo_url
+          const match = url.match(/\/student-documents\/(.+)$/)
+          if (match && match[1]) {
+            filesToDelete.push(match[1])
+          }
+        }
+        
+        if (student.student.aadhar_card_url) {
+          // Extract file path from URL
+          const url = student.student.aadhar_card_url
+          const match = url.match(/\/student-documents\/(.+)$/)
+          if (match && match[1]) {
+            filesToDelete.push(match[1])
+          }
+        }
+
+        // Delete files from storage (non-blocking - failure doesn't affect deletion success)
+        if (filesToDelete.length > 0) {
+          try {
+            await supabaseAdmin.storage.from('student-documents').remove(filesToDelete)
+            logger.info('Deleted student files from storage', { studentId, files: filesToDelete.length })
+          } catch (storageError) {
+            // Log but don't fail - file deletion is optional
+            logger.warn('Failed to delete student files from storage (non-critical)', {
+              studentId,
+              files: filesToDelete.length,
+              error: storageError instanceof Error ? storageError : new Error(String(storageError))
+            })
+          }
+        }
+
+        // Success - all critical deletions completed
+        logger.info('Student hard delete completed successfully', {
+          studentId,
+          userId,
+          studentDeleted,
+          profileDeleted: profileDeleted || (userId && authUserDeleted), // Profile deleted either directly or via CASCADE
+          authUserDeleted
         })
-      }
 
-      // Delete student record
-      const { error } = await supabaseAdmin
-        .from('students')
-        .delete()
-        .eq('id', studentId)
+        return { success: true, error: null }
+      } catch (error) {
+        // Unexpected error during deletion process
+        logger.error('Unexpected error during hard delete', {
+          studentId,
+          userId,
+          studentDeleted,
+          profileDeleted,
+          authUserDeleted,
+          error: error instanceof Error ? error : new Error(String(error))
+        })
 
-      if (error) {
-        logger.error('Error deleting student', error as Error)
-        return { success: false, error: new Error(error.message) }
+        // If student was deleted but profile/auth user deletion failed, we have partial deletion
+        if (studentDeleted && (!profileDeleted || !authUserDeleted)) {
+          return {
+            success: false,
+            error: new Error('Partial deletion occurred. Student record deleted but profile/auth user deletion failed. Manual cleanup may be required.')
+          }
+        }
+
+        return {
+          success: false,
+          error: error instanceof Error ? error : new Error('Failed to delete student')
+        }
       }
     } else {
       // Soft delete: Set is_active = false

@@ -5,9 +5,9 @@
     "version": "1.0.4",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/karateicon.png",
     "splash": {
-      "image": "./assets/icon.png",
+      "image": "./assets/karateicon.png",
       "backgroundColor": "#FFF8E7",
       "resizeMode": "contain"
     },

@@ -327,7 +327,7 @@ export async function takePhotoWithCamera(): Promise<{ uri: string | null; error
  * Send Expo push notification
  * Returns array of successful token indices
  */
-async function sendExpoPushNotification(
+export async function sendExpoPushNotification(
   tokens: string[],
   title: string,
   body: string,

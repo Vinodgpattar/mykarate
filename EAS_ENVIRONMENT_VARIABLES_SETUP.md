@@ -155,3 +155,5 @@ If the app still crashes after setting variables:
 
 **The app is now configured to show a helpful error screen instead of crashing, but you still need to set the environment variables in EAS Dashboard!**
 
+
+

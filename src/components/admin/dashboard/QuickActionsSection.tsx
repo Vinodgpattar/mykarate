@@ -1,8 +1,10 @@
+import { useState, useCallback, useRef } from 'react'
 import { View, StyleSheet, TouchableOpacity } from 'react-native'
 import { Text, Card } from 'react-native-paper'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
-import { useRouter } from 'expo-router'
+import { useRouter, useFocusEffect } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
+import { getPendingInformsCount } from '@/lib/student-leave-informs'
 
 interface QuickAction {
   icon: string
@@ -31,6 +33,14 @@ const QUICK_ACTIONS: QuickAction[] = [
     iconColor: '#fff',
   },
   {
+    icon: 'calendar-alert',
+    label: 'Student Informs',
+    sublabel: 'Leave requests',
+    route: '/(admin)/(tabs)/student-informs',
+    gradient: ['#10B981', '#059669'],
+    iconColor: '#fff',
+  },
+  {
     icon: 'cash-multiple',
     label: 'Record Payment',
     sublabel: 'Collect fees',
@@ -50,6 +60,35 @@ const QUICK_ACTIONS: QuickAction[] = [
 
 export function QuickActionsSection() {
   const router = useRouter()
+  const [pendingCount, setPendingCount] = useState(0)
+  const lastLoadTimeRef = useRef<number>(0)
+  const isLoadingRef = useRef(false)
+
+  const loadPendingCount = useCallback(async () => {
+    // Prevent too frequent refreshes
+    const timeSinceLastLoad = Date.now() - lastLoadTimeRef.current
+    if (isLoadingRef.current || timeSinceLastLoad < 500) {
+      return
+    }
+
+    isLoadingRef.current = true
+    try {
+      const result = await getPendingInformsCount()
+      if (!result.error) {
+        setPendingCount(result.count)
+        lastLoadTimeRef.current = Date.now()
+      }
+    } finally {
+      isLoadingRef.current = false
+    }
+  }, [])
+
+  // Refresh count when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadPendingCount()
+    }, [loadPendingCount])
+  )
 
   return (
     <View style={styles.container}>
@@ -57,37 +96,49 @@ export function QuickActionsSection() {
         Quick Actions
       </Text>
       <View style={styles.grid}>
-        {QUICK_ACTIONS.map((action, index) => (
-          <TouchableOpacity
-            key={index}
-            onPress={() => router.push(action.route as any)}
-            activeOpacity={0.8}
-            style={styles.actionTouchable}
-          >
-            <Card style={styles.card}>
-              <LinearGradient
-                colors={action.gradient as [string, string, ...string[]]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.gradient}
-              >
-                <Card.Content style={styles.content}>
-                  <MaterialCommunityIcons
-                    name={action.icon as any}
-                    size={32}
-                    color={action.iconColor}
-                  />
-                  <Text variant="titleSmall" style={styles.label}>
-                    {action.label}
-                  </Text>
-                  <Text variant="bodySmall" style={styles.sublabel}>
-                    {action.sublabel}
-                  </Text>
-                </Card.Content>
-              </LinearGradient>
-            </Card>
-          </TouchableOpacity>
-        ))}
+        {QUICK_ACTIONS.map((action, index) => {
+          const showBadge = action.route.includes('student-informs') && pendingCount > 0
+          return (
+            <TouchableOpacity
+              key={index}
+              onPress={() => router.push(action.route as any)}
+              activeOpacity={0.8}
+              style={styles.actionTouchable}
+            >
+              <Card style={styles.card}>
+                <LinearGradient
+                  colors={action.gradient as [string, string, ...string[]]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.gradient}
+                >
+                  <Card.Content style={styles.content}>
+                    <View style={styles.iconContainer}>
+                      <MaterialCommunityIcons
+                        name={action.icon as any}
+                        size={32}
+                        color={action.iconColor}
+                      />
+                      {showBadge && (
+                        <View style={styles.badge}>
+                          <Text style={styles.badgeText}>
+                            {pendingCount > 99 ? '99+' : pendingCount}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text variant="titleSmall" style={styles.label}>
+                      {action.label}
+                    </Text>
+                    <Text variant="bodySmall" style={styles.sublabel}>
+                      {action.sublabel}
+                    </Text>
+                  </Card.Content>
+                </LinearGradient>
+              </Card>
+            </TouchableOpacity>
+          )
+        })}
       </View>
     </View>
   )
@@ -125,6 +176,28 @@ const styles = StyleSheet.create({
   content: {
     alignItems: 'center',
     padding: 0,
+  },
+  iconContainer: {
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
   },
   label: {
     color: '#fff',

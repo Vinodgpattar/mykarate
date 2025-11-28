@@ -113,17 +113,6 @@ export default function LoginScreen() {
                 disabled={loading}
               />
 
-              {/* Forgot Password Link */}
-              <Button
-                mode="text"
-                onPress={() => router.push('/(auth)/forgot-password')}
-                textColor="#7B2CBF"
-                style={styles.forgotPasswordButton}
-                compact
-              >
-                Forgot Password?
-              </Button>
-
               {/* Login Button */}
               <Button
                 mode="contained"
@@ -199,10 +188,6 @@ const styles = StyleSheet.create({
   },
   input: {
     marginBottom: 16,
-  },
-  forgotPasswordButton: {
-    alignSelf: 'flex-end',
-    marginBottom: 8,
   },
   button: {
     marginTop: 8,

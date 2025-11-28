@@ -1,16 +1,18 @@
-import React, { useState } from 'react'
+import React, { useState, useCallback, useRef } from 'react'
 import { View, StyleSheet, TouchableOpacity, Platform, Image } from 'react-native'
 import { Text } from 'react-native-paper'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
-import { useRouter } from 'expo-router'
+import { useRouter, useFocusEffect } from 'expo-router'
 import { supabase } from '@/lib/supabase'
+import { getPendingInformsCount } from '@/lib/student-leave-informs'
 
 interface AdminHeaderProps {
   title?: string
   subtitle?: string
   showBackButton?: boolean
   onBackPress?: () => void
+  pendingInformsCount?: number
 }
 
 export function AdminHeader({
@@ -18,10 +20,56 @@ export function AdminHeader({
   subtitle,
   showBackButton = false,
   onBackPress,
+  pendingInformsCount: propPendingInformsCount,
 }: AdminHeaderProps) {
   const insets = useSafeAreaInsets()
   const router = useRouter()
   const [imageError, setImageError] = useState(false)
+  const [pendingInformsCount, setPendingInformsCount] = useState(propPendingInformsCount ?? 0)
+  const lastLoadTimeRef = useRef<number>(0)
+  const isLoadingRef = useRef(false)
+
+  // If count is not provided as prop, fetch it ourselves
+  const loadPendingCount = useCallback(async () => {
+    // If count is provided as prop, use it and don't fetch
+    if (propPendingInformsCount !== undefined) {
+      setPendingInformsCount(propPendingInformsCount)
+      return
+    }
+
+    // Prevent too frequent refreshes
+    const timeSinceLastLoad = Date.now() - lastLoadTimeRef.current
+    if (isLoadingRef.current || timeSinceLastLoad < 500) {
+      return
+    }
+
+    isLoadingRef.current = true
+    try {
+      const result = await getPendingInformsCount()
+      if (!result.error) {
+        setPendingInformsCount(result.count)
+        lastLoadTimeRef.current = Date.now()
+      }
+    } finally {
+      isLoadingRef.current = false
+    }
+  }, [propPendingInformsCount])
+
+  // Update count when prop changes
+  React.useEffect(() => {
+    if (propPendingInformsCount !== undefined) {
+      setPendingInformsCount(propPendingInformsCount)
+    }
+  }, [propPendingInformsCount])
+
+  // Refresh count when screen comes into focus (only if not provided as prop)
+  useFocusEffect(
+    useCallback(() => {
+      if (propPendingInformsCount === undefined) {
+        loadPendingCount()
+      }
+    }, [loadPendingCount, propPendingInformsCount])
+  )
 
   const getLogoUrl = () => {
     // Try to get logo from Supabase storage (same as splash screen)
@@ -41,8 +89,8 @@ export function AdminHeader({
     router.back()
   }
 
-  const handleNotificationsPress = () => {
-    router.push('/(admin)/(tabs)/notifications')
+  const handleStudentInformsPress = () => {
+    router.push('/(admin)/(tabs)/student-informs')
   }
 
   const handleAccountPress = () => {
@@ -91,11 +139,18 @@ export function AdminHeader({
 
         <View style={styles.actions}>
           <TouchableOpacity
-            onPress={handleNotificationsPress}
+            onPress={handleStudentInformsPress}
             style={styles.iconButton}
             activeOpacity={0.7}
           >
-            <MaterialCommunityIcons name="bell-outline" size={24} color="#111827" />
+            <MaterialCommunityIcons name="calendar-alert" size={24} color="#111827" />
+            {pendingInformsCount !== undefined && pendingInformsCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>
+                  {pendingInformsCount > 99 ? '99+' : pendingInformsCount}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleAccountPress}
@@ -182,5 +237,25 @@ const styles = StyleSheet.create({
   iconButton: {
     padding: 6,
     marginLeft: 4,
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
   },
 })

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
 import { Platform } from 'react-native'
 import * as Notifications from 'expo-notifications'
 import { useRouter } from 'expo-router'
@@ -118,6 +118,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   }, [router])
 
+  // Automatically request permissions when user logs in
+  useEffect(() => {
+    if (user?.id && !permissionsGranted) {
+      // Automatically request permissions when user logs in
+      requestPermissions().catch((error) => {
+        logger.error('Error requesting notification permissions on login', error instanceof Error ? error : new Error(String(error)))
+      })
+    }
+  }, [user?.id, permissionsGranted, requestPermissions])
+
   // Register push token when user logs in and permissions are granted
   useEffect(() => {
     if (user?.id && permissionsGranted) {
@@ -210,11 +220,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   }
 
-  const requestPermissions = async (): Promise<boolean> => {
+  const requestPermissions = useCallback(async (): Promise<boolean> => {
     const granted = await requestNotificationPermissions()
     setPermissionsGranted(granted)
     return granted
-  }
+  }, [])
 
   const updateConfig = async (updates: Partial<NotificationConfig>) => {
     const newConfig = { ...config, ...updates }

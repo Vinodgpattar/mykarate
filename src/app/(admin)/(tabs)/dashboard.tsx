@@ -18,6 +18,7 @@ import { ErrorState } from '@/components/admin/dashboard/ErrorState'
 import { HeroWelcomeSection } from '@/components/admin/dashboard/HeroWelcomeSection'
 import { QuickInsightsCard } from '@/components/admin/dashboard/QuickInsightsCard'
 import { COLORS, SPACING } from '@/lib/design-system'
+import { getPendingInformsCount } from '@/lib/student-leave-informs'
 
 export default function AdminDashboardScreen() {
   const { user, signOut } = useAuth()
@@ -27,6 +28,7 @@ export default function AdminDashboardScreen() {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null)
   const [adminName, setAdminName] = useState<string | null>(null)
+  const [pendingInformsCount, setPendingInformsCount] = useState(0)
 
   // Refs to prevent unnecessary reloads
   const lastLoadTimeRef = useRef<number>(0)
@@ -48,10 +50,18 @@ export default function AdminDashboardScreen() {
     }
   }, [user?.id])
 
+  const loadPendingCount = useCallback(async () => {
+    const result = await getPendingInformsCount()
+    if (!result.error) {
+      setPendingInformsCount(result.count)
+    }
+  }, [])
+
   useEffect(() => {
     checkRole()
     loadProfileImage()
-  }, [user, loadProfileImage])
+    loadPendingCount()
+  }, [user, loadProfileImage, loadPendingCount])
 
   // Reload data when screen comes into focus (e.g., after creating/editing students/branches)
   useFocusEffect(
@@ -70,13 +80,14 @@ export default function AdminDashboardScreen() {
       
       // Load profile image and reload dashboard data
       loadProfileImage()
+      loadPendingCount()
       reloadRef.current()
       
       // Reset flag when screen loses focus (cleanup)
       return () => {
         hasLoadedOnFocusRef.current = false
       }
-    }, [user?.id, loadProfileImage]) // Only depend on user.id and loadProfileImage
+    }, [user?.id, loadProfileImage, loadPendingCount]) // Only depend on user.id and loadProfileImage
   )
 
   const checkRole = async () => {
@@ -127,7 +138,7 @@ export default function AdminDashboardScreen() {
   if (error && branches.length === 0 && !studentStats) {
     return (
       <View style={styles.container}>
-        <AdminHeader subtitle={`${today} • ${time}`} />
+        <AdminHeader subtitle={`${today} • ${time}`} pendingInformsCount={pendingInformsCount} />
         <ErrorState message="Failed to load dashboard data" onRetry={reload} />
       </View>
     )
@@ -135,7 +146,7 @@ export default function AdminDashboardScreen() {
 
   return (
     <View style={styles.container}>
-      <AdminHeader subtitle={`${today} • ${time}`} />
+      <AdminHeader subtitle={`${today} • ${time}`} pendingInformsCount={pendingInformsCount} />
 
       <ScrollView
         style={styles.scrollView}

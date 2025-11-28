@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { View, StyleSheet, ScrollView, Image, TouchableOpacity, Alert } from 'react-native'
 import { Text, Card, Button, ActivityIndicator, Chip, Divider } from 'react-native-paper'
-import { useRouter, useLocalSearchParams } from 'expo-router'
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { format, formatDistanceToNow } from 'date-fns'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '@/context/AuthContext'
-import { getLeaveInformById, approveLeaveInform } from '@/lib/student-leave-informs'
+import { getLeaveInformById, approveLeaveInform, deleteLeaveInform } from '@/lib/student-leave-informs'
 import { logger } from '@/lib/logger'
 import { AdminHeader } from '@/components/admin/AdminHeader'
 
@@ -20,6 +20,7 @@ export default function LeaveInformDetailScreen() {
   const [inform, setInform] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [approving, setApproving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (informId) {
@@ -70,6 +71,46 @@ export default function LeaveInformDetailScreen() {
     } finally {
       setApproving(false)
     }
+  }
+
+  const handleDelete = async () => {
+    if (!user?.id) {
+      Alert.alert('Error', 'User not found')
+      return
+    }
+
+    if (!inform) return
+
+    const studentName = getStudentName()
+
+    Alert.alert(
+      'Delete Leave Inform',
+      `Are you sure you want to delete the leave inform from ${studentName}? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeleting(true)
+            try {
+              const result = await deleteLeaveInform(informId, user.id)
+              if (result.success) {
+                logger.info('Leave inform deleted successfully', { informId })
+                router.back()
+              } else {
+                Alert.alert('Error', result.error?.message || 'Failed to delete leave inform')
+              }
+            } catch (error) {
+              logger.error('Unexpected error deleting leave inform', error as Error)
+              Alert.alert('Error', 'Failed to delete leave inform')
+            } finally {
+              setDeleting(false)
+            }
+          },
+        },
+      ]
+    )
   }
 
   const getStudentName = () => {
@@ -216,34 +257,48 @@ export default function LeaveInformDetailScreen() {
           </Card.Content>
         </Card>
 
-        {/* Action Button */}
-        {inform.status === 'pending' && (
-          <Button
-            mode="contained"
-            onPress={handleApprove}
-            loading={approving}
-            disabled={approving}
-            style={styles.approveButton}
-            buttonColor="#10B981"
-            icon="check-circle"
-          >
-            Approve Leave Inform
-          </Button>
-        )}
+        {/* Action Buttons */}
+        <View style={styles.actionsContainer}>
+          {inform.status === 'pending' && (
+            <Button
+              mode="contained"
+              onPress={handleApprove}
+              loading={approving}
+              disabled={approving}
+              style={styles.approveButton}
+              buttonColor="#10B981"
+              icon="check-circle"
+            >
+              Approve Leave Inform
+            </Button>
+          )}
 
-        {inform.status === 'approved' && (
-          <Card style={[styles.card, styles.successCard]}>
-            <Card.Content style={styles.successContent}>
-              <MaterialCommunityIcons name="check-circle" size={48} color="#10B981" />
-              <Text variant="titleMedium" style={styles.successText}>
-                Leave Inform Approved
-              </Text>
-              <Text variant="bodyMedium" style={styles.successSubtext}>
-                Thank you for keeping us informed
-              </Text>
-            </Card.Content>
-          </Card>
-        )}
+          {inform.status === 'approved' && (
+            <Card style={[styles.card, styles.successCard]}>
+              <Card.Content style={styles.successContent}>
+                <MaterialCommunityIcons name="check-circle" size={48} color="#10B981" />
+                <Text variant="titleMedium" style={styles.successText}>
+                  Leave Inform Approved
+                </Text>
+                <Text variant="bodyMedium" style={styles.successSubtext}>
+                  Thank you for keeping us informed
+                </Text>
+              </Card.Content>
+            </Card>
+          )}
+
+          <Button
+            mode="outlined"
+            onPress={handleDelete}
+            loading={deleting}
+            disabled={deleting}
+            style={styles.deleteButton}
+            textColor="#EF4444"
+            icon="delete-outline"
+          >
+            Delete Leave Inform
+          </Button>
+        </View>
       </ScrollView>
     </View>
   )
@@ -371,8 +426,16 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontStyle: 'italic',
   },
+  actionsContainer: {
+    gap: 12,
+    marginTop: 16,
+  },
   approveButton: {
-    marginTop: 8,
+    paddingVertical: 6,
+  },
+  deleteButton: {
+    borderRadius: 8,
+    borderColor: '#EF4444',
     paddingVertical: 6,
   },
   successCard: {

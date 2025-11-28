@@ -107,7 +107,13 @@ export default function NotificationDetailsScreen() {
 
   const readRecipients = recipients.filter((r) => r.read)
   const unreadRecipients = recipients.filter((r) => !r.read)
-  const readPercentage = notification.totalSent > 0 ? Math.round((notification.readCount / notification.totalSent) * 100) : 0
+  // Calculate counts from recipients array (source of truth)
+  const calculatedReadCount = readRecipients.length
+  const calculatedTotalSent = recipients.length
+  // Use calculated values, fallback to database values if recipients not loaded yet
+  const displayReadCount = calculatedTotalSent > 0 ? calculatedReadCount : (notification.readCount || 0)
+  const displayTotalSent = calculatedTotalSent > 0 ? calculatedTotalSent : (notification.totalSent || 0)
+  const readPercentage = displayTotalSent > 0 ? Math.round((displayReadCount / displayTotalSent) * 100) : 0
 
   const displayedRecipients = showAllRecipients ? recipients : recipients.slice(0, 10)
 
@@ -261,7 +267,7 @@ export default function NotificationDetailsScreen() {
                 <MaterialCommunityIcons name="send" size={18} color="#6366F1" />
               </View>
               <Text variant="headlineSmall" style={styles.statNumber}>
-                {notification.totalSent}
+                {displayTotalSent}
               </Text>
               <Text variant="bodySmall" style={styles.statLabel}>
                 Total Sent
@@ -272,7 +278,7 @@ export default function NotificationDetailsScreen() {
                 <MaterialCommunityIcons name="eye" size={18} color="#10B981" />
               </View>
               <Text variant="headlineSmall" style={[styles.statNumber, { color: '#10B981' }]}>
-                {notification.readCount}
+                {displayReadCount}
               </Text>
               <Text variant="bodySmall" style={styles.statLabel}>
                 Read
