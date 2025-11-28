@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "Karate Sports Club Hubballi",
+    "name": "Karate",
     "slug": "karate-dojo-mobile",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
     "splash": {
-      "image": "./assets/dojo-logo.jpg",
+      "image": "./assets/icon.png",
       "backgroundColor": "#FFF8E7",
       "resizeMode": "contain"
     },
@@ -19,10 +19,6 @@
       "bundleIdentifier": "com.karatedojo.mobile"
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
-        "backgroundColor": "#7B2CBF"
-      },
       "package": "com.karatedojo.mobile",
       "permissions": [
         "android.permission.CAMERA",
@@ -32,6 +28,14 @@
     "web": {},
     "plugins": [
       "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#FFF8E7"
+        }
+      ],
       "expo-notifications",
       [
         "expo-image-picker",
@@ -39,7 +43,8 @@
           "photosPermission": "The app accesses your photos to let you share them.",
           "cameraPermission": "The app accesses your camera to let you take photos."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "scheme": "karate-dojo",
     "extra": {

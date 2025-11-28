@@ -21,7 +21,7 @@ async function compressImage(
   try {
     // Get original image info
     const originalInfo = await FileSystem.getInfoAsync(imageUri)
-    const originalSize = originalInfo.size || 0
+    const originalSize = (originalInfo.exists && 'size' in originalInfo) ? originalInfo.size : 0
 
     // First, resize if needed
     let manipulatedUri = imageUri
@@ -48,7 +48,7 @@ async function compressImage(
 
     // Check if compressed size is acceptable
     let compressedInfo = await FileSystem.getInfoAsync(manipulatedUri)
-    let compressedSize = compressedInfo.size || 0
+    let compressedSize = (compressedInfo.exists && 'size' in compressedInfo) ? compressedInfo.size : 0
 
     // If still too large, reduce quality iteratively
     while (compressedSize > MAX_IMAGE_SIZE && quality > 0.3) {
@@ -70,7 +70,7 @@ async function compressImage(
       )
       manipulatedUri = recompressed.uri
       compressedInfo = await FileSystem.getInfoAsync(manipulatedUri)
-      compressedSize = compressedInfo.size || 0
+      compressedSize = (compressedInfo.exists && 'size' in compressedInfo) ? compressedInfo.size : 0
     }
 
     logger.info('Image compressed', {
@@ -84,7 +84,8 @@ async function compressImage(
     logger.error('Error compressing image', error as Error)
     // Return original if compression fails
     const info = await FileSystem.getInfoAsync(imageUri)
-    return { uri: imageUri, size: info.size || 0 }
+    const size = (info.exists && 'size' in info) ? info.size : 0
+    return { uri: imageUri, size }
   }
 }
 
@@ -190,9 +191,11 @@ export async function uploadGalleryImage(
     }
 
     onProgress?.(100, 'Upload complete!')
+    const originalInfo = await FileSystem.getInfoAsync(imageUri)
+    const originalSize = (originalInfo.exists && 'size' in originalInfo) ? originalInfo.size : 0
     logger.info('Gallery image uploaded successfully', {
       url: urlData.publicUrl,
-      originalSize: (await FileSystem.getInfoAsync(imageUri)).size,
+      originalSize,
       compressedSize,
     })
     return { url: urlData.publicUrl, error: null }

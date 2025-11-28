@@ -4,6 +4,7 @@ import { TextInput, Button, Text, Card, Snackbar } from 'react-native-paper'
 import { useAuth } from '@/context/AuthContext'
 import { useRouter } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
+import { logger } from '@/lib/logger'
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('')
@@ -31,12 +32,12 @@ export default function LoginScreen() {
     setError('')
 
     try {
-      console.log('Attempting login for email:', email.trim())
+      logger.debug('Attempting login', { email: email.trim() })
       await signIn(email.trim(), password)
-      console.log('Login successful - navigating to index for role detection')
+      logger.info('Login successful - navigating to index for role detection')
       router.replace('/')
     } catch (err: any) {
-      console.error('Login error:', err)
+      logger.error('Login error', err instanceof Error ? err : new Error(String(err)))
       let errorMessage = err.message || 'Failed to login. Please check your credentials.'
       
       if (err.message?.includes('Invalid login credentials') || err.message?.includes('Invalid')) {

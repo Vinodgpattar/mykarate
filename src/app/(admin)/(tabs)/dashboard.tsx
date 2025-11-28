@@ -12,6 +12,7 @@ import { OverviewStatsSection } from '@/components/admin/dashboard/OverviewStats
 import { QuickActionsSection } from '@/components/admin/dashboard/QuickActionsSection'
 import { AlertsSection } from '@/components/admin/dashboard/AlertsSection'
 import { RecentBranchesSection } from '@/components/admin/dashboard/RecentBranchesSection'
+import { logger } from '@/lib/logger'
 import { AllFeaturesSection } from '@/components/admin/dashboard/AllFeaturesSection'
 import { ErrorState } from '@/components/admin/dashboard/ErrorState'
 import { HeroWelcomeSection } from '@/components/admin/dashboard/HeroWelcomeSection'
@@ -109,7 +110,7 @@ export default function AdminDashboardScreen() {
               // Navigate to login
               router.replace('/(auth)/login')
             } catch (error) {
-              console.error('Error signing out:', error)
+              logger.error('Error signing out', error instanceof Error ? error : new Error(String(error)))
               Alert.alert('Error', 'Failed to sign out. Please try again.')
             }
           },

@@ -74,7 +74,7 @@ export function captureMessage(message: string, level: 'info' | 'warning' | 'err
     try {
       const Sentry = require('@sentry/react-native')
       Sentry.captureMessage(message, {
-        level: level as Sentry.SeverityLevel,
+        level: level as any,
         contexts: context ? { custom: context } : undefined,
       })
       return

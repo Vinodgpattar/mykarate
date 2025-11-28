@@ -1002,7 +1002,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     width: '100%',
   },
-  actions: {
+  successActions: {
     flexDirection: 'row',
     gap: 12,
     width: '100%',

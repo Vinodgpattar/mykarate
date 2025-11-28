@@ -47,7 +47,8 @@ export function NotificationBanner({ notification, onPress, onDismiss }: Notific
   }
 
   const icon = TYPE_ICONS[notification.type] || 'megaphone'
-  const colors = TYPE_COLORS[notification.type] || ['#7B2CBF', '#6D28D9']
+  const colorValue = TYPE_COLORS[notification.type] || '#7B2CBF'
+  const colors = (Array.isArray(colorValue) ? colorValue : [colorValue, colorValue]) as [string, string, ...string[]]
   const timeAgo = notification.createdAt && !isNaN(new Date(notification.createdAt).getTime())
     ? formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })
     : 'Recently'

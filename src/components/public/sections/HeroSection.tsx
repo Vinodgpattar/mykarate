@@ -69,7 +69,7 @@ export function HeroSection({
           onLoad={() => setImageLoaded(true)}
         >
           <LinearGradient
-            colors={['rgba(0,0,0,0.7)', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.6)']}
+            colors={['rgba(0,0,0,0.7)', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.6)'] as [string, string, string]}
             style={styles.gradient}
           >
             <View style={[styles.content, { paddingTop: insets.top + (IS_MOBILE ? 40 : 80), paddingBottom: insets.bottom + 40 }]}>
@@ -127,7 +127,7 @@ export function HeroSection({
         </ImageBackground>
       ) : (
         <LinearGradient
-          colors={['#7B2CBF', '#9D4EDD', '#7B2CBF']}
+          colors={['#7B2CBF', '#9D4EDD', '#7B2CBF'] as [string, string, string]}
           style={styles.fallbackBackground}
         >
           <View style={[styles.content, { paddingTop: insets.top + (IS_MOBILE ? 40 : 80), paddingBottom: insets.bottom + 40 }]}>

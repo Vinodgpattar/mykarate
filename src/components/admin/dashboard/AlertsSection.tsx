@@ -40,7 +40,7 @@ export function AlertsSection({ branches, studentStats }: AlertsSectionProps) {
         >
           <Card style={styles.alertCard}>
             <LinearGradient
-              colors={['#FEF3C7', '#FDE68A']}
+              colors={['#FEF3C7', '#FDE68A'] as [string, string]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.alertGradient}
@@ -72,7 +72,7 @@ export function AlertsSection({ branches, studentStats }: AlertsSectionProps) {
         >
           <Card style={styles.alertCard}>
             <LinearGradient
-              colors={['#FEE2E2', '#FECACA']}
+              colors={['#FEE2E2', '#FECACA'] as [string, string]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.alertGradient}

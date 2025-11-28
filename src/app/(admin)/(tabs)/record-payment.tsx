@@ -297,7 +297,6 @@ export default function RecordPaymentScreen() {
               mode="outlined"
               style={styles.input}
               disabled={saving || remainingAmount <= 0}
-              helperText={remainingAmount > 0 ? `Remaining balance: ₹${remainingAmount.toFixed(2)}` : 'Fee is fully paid'}
               error={
                 paymentAmount && 
                 (isNaN(parseFloat(paymentAmount)) || 
@@ -305,6 +304,16 @@ export default function RecordPaymentScreen() {
                  parseFloat(paymentAmount) > remainingAmount)
               }
             />
+            {remainingAmount > 0 && (
+              <Text variant="bodySmall" style={{ marginTop: 4, color: '#6B7280' }}>
+                Remaining balance: ₹{remainingAmount.toFixed(2)}
+              </Text>
+            )}
+            {remainingAmount <= 0 && (
+              <Text variant="bodySmall" style={{ marginTop: 4, color: '#10B981' }}>
+                Fee is fully paid
+              </Text>
+            )}
 
             <Menu
               visible={methodMenuVisible}

@@ -33,6 +33,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { format } from 'date-fns'
 import ImageViewing from 'react-native-image-viewing'
 import { BELT_COLORS, getBeltDisplayName } from '@/lib/belts'
+import { logger } from '@/lib/logger'
 
 export default function StudentProfileScreen() {
   // Feature flag: Set to true to enable switch plan feature
@@ -119,13 +120,12 @@ export default function StudentProfileScreen() {
       setLoadingPreference(true)
       const result = await getStudentPaymentPreference(studentId)
       if (result.error) {
-        console.warn('Failed to load payment preference:', result.error.message)
-        setPaymentPreference(null)
+        logger.warn('Failed to load payment preference', result.error)
       } else {
         setPaymentPreference(result.preference)
       }
     } catch (error) {
-      console.warn('Error loading payment preference:', error)
+      logger.warn('Error loading payment preference', error instanceof Error ? error : new Error(String(error)))
       setPaymentPreference(null)
     } finally {
       setLoadingPreference(false)
@@ -139,12 +139,12 @@ export default function StudentProfileScreen() {
       const result = await getStudentFees(studentId)
       if (result.error) {
         // Don't show error for fees - just log it
-        console.warn('Failed to load fees:', result.error.message)
+        logger.warn('Failed to load fees', result.error)
       } else {
         setFees(result.fees || [])
       }
     } catch (error) {
-      console.warn('Error loading fees:', error)
+      logger.warn('Error loading fees', error instanceof Error ? error : new Error(String(error)))
     } finally {
       setLoadingFees(false)
     }

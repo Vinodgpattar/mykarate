@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { supabase } from '@/lib/supabase'
+import { logger } from '@/lib/logger'
 
 interface PublicHeaderProps {
   logoUrl?: string | null
@@ -25,7 +26,7 @@ export function PublicHeader({
   // Get logo URL from Supabase storage if not provided
   const getLogoUrl = () => {
     if (logoUrl) {
-      console.log('PublicHeader: Using provided logo URL:', logoUrl)
+      logger.debug('PublicHeader: Using provided logo URL', { logoUrl })
       return logoUrl
     }
     
@@ -35,20 +36,19 @@ export function PublicHeader({
       .getPublicUrl('logo/dojo-logo.jpg')
     
     const url = jpgData?.publicUrl || null
-    console.log('PublicHeader: Generated logo URL:', url)
+    logger.debug('PublicHeader: Generated logo URL', { url })
     return url
   }
 
   const finalLogoUrl = getLogoUrl()
 
   const handleImageError = (error: any) => {
-    console.error('PublicHeader: Image failed to load:', error)
-    console.error('PublicHeader: Failed URL was:', finalLogoUrl)
+    logger.error('PublicHeader: Image failed to load', error instanceof Error ? error : new Error(String(error)), { finalLogoUrl })
     setImageError(true)
   }
 
   const handleImageLoad = () => {
-    console.log('PublicHeader: Logo loaded successfully')
+    logger.debug('PublicHeader: Logo loaded successfully')
     setImageError(false)
   }
 

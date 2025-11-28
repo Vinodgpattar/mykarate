@@ -42,7 +42,7 @@ export async function requestPasswordReset(
       }
     }
 
-    const user = users?.find((u) => u.email === normalizedEmail)
+    const user = users?.find((u: any) => u.email === normalizedEmail)
     if (!user) {
       // Don't reveal if email exists (security)
       logger.warn('Password reset requested for non-existent email', { email: normalizedEmail })

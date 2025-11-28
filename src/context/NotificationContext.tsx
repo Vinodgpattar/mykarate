@@ -13,6 +13,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './AuthContext'
+import { logger } from '@/lib/logger'
 
 const NOTIFICATION_CONFIG_KEY = '@notification_config'
 const NOTIFICATION_HISTORY_KEY = '@notification_history'
@@ -64,7 +65,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     // Listener for notifications received while app is foregrounded
     notificationListener.current = Notifications.addNotificationReceivedListener(
       async (notification) => {
-        console.log('Notification received:', notification)
+        logger.debug('Notification received', { notificationId: notification.request.identifier })
         const now = new Date()
         setLastNotificationTime(now)
         
@@ -83,7 +84,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     // Listener for when user taps on a notification
     responseListener.current = Notifications.addNotificationResponseReceivedListener(
       (response) => {
-        console.log('Notification tapped:', response)
+        logger.debug('Notification tapped', { notificationId: response.notification.request.identifier })
         
         const data = response.notification.request.content.data
         
@@ -104,14 +105,14 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         try {
           notificationListener.current.remove()
         } catch (error) {
-          console.warn('Error removing notification listener:', error)
+          logger.warn('Error removing notification listener', error instanceof Error ? error : new Error(String(error)))
         }
       }
       if (responseListener.current) {
         try {
           responseListener.current.remove()
         } catch (error) {
-          console.warn('Error removing response listener:', error)
+          logger.warn('Error removing response listener', error instanceof Error ? error : new Error(String(error)))
         }
       }
     }
@@ -127,7 +128,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             Constants.easConfig?.projectId
 
           if (!projectId) {
-            console.warn('Expo project ID not found. Push notifications may not work. Add "extra.eas.projectId" to app.json')
+            logger.warn('Expo project ID not found. Push notifications may not work. Add "extra.eas.projectId" to app.json')
             return
           }
 
@@ -156,13 +157,13 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
               )
 
             if (error) {
-              console.error('Error saving push token:', error)
+              logger.error('Error saving push token', error)
             } else {
-              console.log('Push token registered successfully')
+              logger.info('Push token registered successfully')
             }
           }
         } catch (error) {
-          console.error('Error registering push token:', error)
+          logger.error('Error registering push token', error instanceof Error ? error : new Error(String(error)))
         }
       }
 
@@ -173,7 +174,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   // Cancel notifications if disabled
   useEffect(() => {
     if (!config.enabled) {
-      cancelAllNotifications().catch(console.error)
+      cancelAllNotifications().catch((error) => {
+        logger.error('Error canceling notifications', error instanceof Error ? error : new Error(String(error)))
+      })
     }
   }, [config.enabled])
 
@@ -185,7 +188,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         setConfig({ ...DEFAULT_CONFIG, ...parsed })
       }
     } catch (error) {
-      console.error('Error loading notification config:', error)
+      logger.error('Error loading notification config', error instanceof Error ? error : new Error(String(error)))
     }
   }
 
@@ -194,7 +197,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       await AsyncStorage.setItem(NOTIFICATION_CONFIG_KEY, JSON.stringify(newConfig))
       setConfig(newConfig)
     } catch (error) {
-      console.error('Error saving notification config:', error)
+      logger.error('Error saving notification config', error instanceof Error ? error : new Error(String(error)))
     }
   }
 
@@ -203,7 +206,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       const { status } = await Notifications.getPermissionsAsync()
       setPermissionsGranted(status === 'granted')
     } catch (error) {
-      console.error('Error checking permissions:', error)
+      logger.error('Error checking permissions', error instanceof Error ? error : new Error(String(error)))
     }
   }
 
@@ -238,7 +241,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         setNotificationHistory(history)
       }
     } catch (error) {
-      console.error('Error loading notification history:', error)
+      logger.error('Error loading notification history', error instanceof Error ? error : new Error(String(error)))
     }
   }
 
@@ -247,7 +250,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       await AsyncStorage.setItem(NOTIFICATION_HISTORY_KEY, JSON.stringify(history))
       setNotificationHistory(history)
     } catch (error) {
-      console.error('Error saving notification history:', error)
+      logger.error('Error saving notification history', error instanceof Error ? error : new Error(String(error)))
     }
   }
 
@@ -259,7 +262,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         .slice(0, MAX_HISTORY_ITEMS)
       await saveHistory(trimmedHistory)
     } catch (error) {
-      console.error('Error adding to notification history:', error)
+      logger.error('Error adding to notification history', error instanceof Error ? error : new Error(String(error)))
     }
   }
 
@@ -268,7 +271,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       await AsyncStorage.removeItem(NOTIFICATION_HISTORY_KEY)
       setNotificationHistory([])
     } catch (error) {
-      console.error('Error clearing notification history:', error)
+      logger.error('Error clearing notification history', error instanceof Error ? error : new Error(String(error)))
     }
   }
 

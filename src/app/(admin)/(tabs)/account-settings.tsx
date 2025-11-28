@@ -8,6 +8,7 @@ import { getProfileByUserId } from '@/lib/profiles'
 import { useState, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { AdminHeader } from '@/components/admin/AdminHeader'
+import { logger } from '@/lib/logger'
 
 export default function AccountSettingsScreen() {
   const { user, signOut } = useAuth()
@@ -28,7 +29,7 @@ export default function AccountSettingsScreen() {
           setUserRole(result.profile.role)
         }
       } catch (error) {
-        console.error('Error loading user info:', error)
+        logger.error('Error loading user info', error instanceof Error ? error : new Error(String(error)))
       } finally {
         setLoading(false)
       }
@@ -56,7 +57,7 @@ export default function AccountSettingsScreen() {
               // Navigate to login
               router.replace('/(auth)/login')
             } catch (error) {
-              console.error('Error signing out:', error)
+              logger.error('Error signing out', error instanceof Error ? error : new Error(String(error)))
               Alert.alert('Error', 'Failed to sign out. Please try again.')
             }
           },

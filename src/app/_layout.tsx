@@ -50,6 +50,8 @@ export default function RootLayout() {
   // Initialize Sentry on app start
   React.useEffect(() => {
     initSentry()
+    // ErrorBoundary component will handle React errors
+    // Sentry will capture errors if configured
   }, [])
 
   return (

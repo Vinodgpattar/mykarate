@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { getAllFeeConfigurations } from '@/lib/fees'
 import { useState, useEffect } from 'react'
 import type { FeeConfiguration } from '@/lib/fees'
+import { logger } from '@/lib/logger'
 
 interface MembershipBottomSheetProps {
   visible: boolean
@@ -30,7 +31,7 @@ export function MembershipBottomSheet({ visible, onClose }: MembershipBottomShee
         setFees(result.fees)
       }
     } catch (error) {
-      console.error('Error loading fees', error)
+      logger.error('Error loading fees', error instanceof Error ? error : new Error(String(error)))
     } finally {
       setLoading(false)
     }

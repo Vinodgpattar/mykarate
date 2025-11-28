@@ -5,6 +5,7 @@ import { getProfileByUserId } from '@/lib/profiles'
 import { supabase } from '@/lib/supabase'
 import { View, ActivityIndicator, StyleSheet } from 'react-native'
 import { Text } from 'react-native-paper'
+import { logger } from '@/lib/logger'
 
 export default function AdminLayout() {
   const { session, loading: authLoading, user } = useAuth()
@@ -35,22 +36,22 @@ export default function AdminLayout() {
           const result = await getProfileByUserId(user.id)
           
           if (result.error) {
-            console.error('AdminLayout: Error fetching profile:', result.error)
+            logger.error('AdminLayout: Error fetching profile', result.error)
             router.replace('/(auth)/login')
             return
           }
 
           if (!result.profile) {
-            console.warn('AdminLayout: No profile found - denying access')
+            logger.warn('AdminLayout: No profile found - denying access')
             router.replace('/(auth)/login')
             return
           }
 
           const role = result.profile.role
-          console.log('AdminLayout: Role from profiles:', role)
+          logger.debug('AdminLayout: Role from profiles', { role })
 
           if (role === 'student') {
-            console.log('AdminLayout: User is student, redirecting')
+            logger.debug('AdminLayout: User is student, redirecting')
             router.replace('/(student)/(tabs)/dashboard')
             return
           }
@@ -62,10 +63,10 @@ export default function AdminLayout() {
           }
 
           // Unknown role - deny access
-          console.warn('AdminLayout: Unknown role - denying access')
+          logger.warn('AdminLayout: Unknown role - denying access', { role })
           router.replace('/(auth)/login')
         } catch (error) {
-          console.error('AdminLayout: Error checking admin access:', error)
+          logger.error('AdminLayout: Error checking admin access', error instanceof Error ? error : new Error(String(error)))
           router.replace('/(auth)/login')
         }
       } else {

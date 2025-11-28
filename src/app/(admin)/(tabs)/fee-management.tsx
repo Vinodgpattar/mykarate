@@ -261,6 +261,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFF8E7',
   },
+  header: {
+    padding: 16,
+    paddingTop: 16,
+    backgroundColor: '#FFF8E7',
+  },
+  title: {
+    fontWeight: '600',
+    color: '#1A1A1A',
+  },
   scrollView: {
     flex: 1,
   },

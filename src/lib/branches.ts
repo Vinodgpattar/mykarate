@@ -797,6 +797,7 @@ export async function assignAdminToBranch(
       return {
         success: false,
         password: null,
+        isReused: false,
         error: new Error('Service role key not configured. Please set EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY in .env.local'),
       }
     }
@@ -807,6 +808,7 @@ export async function assignAdminToBranch(
       return {
         success: false,
         password: null,
+        isReused: false,
         error: new Error('Branch not found'),
       }
     }
@@ -815,7 +817,7 @@ export async function assignAdminToBranch(
 
     // Check if user already exists
     const { data: { users } } = await supabaseAdmin.auth.admin.listUsers()
-    const existingUser = users?.find(u => u.email === normalizedEmail)
+    const existingUser = users?.find((u: any) => u.email === normalizedEmail)
     
     let userId: string
     let isReused = false
@@ -962,6 +964,7 @@ export async function assignAdminToBranch(
         return {
           success: false,
           password: null,
+          isReused: false,
           error: new Error(createError?.message || 'Failed to create auth user'),
         }
       }
@@ -993,6 +996,7 @@ export async function assignAdminToBranch(
         return {
           success: false,
           password: null,
+          isReused: false,
           error: new Error('Failed to create profile: ' + profileInsertError.message),
         }
       }

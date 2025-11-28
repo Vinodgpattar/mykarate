@@ -608,10 +608,12 @@ export async function getNotifications(options?: {
       const fixedUrl = notification.imageUrl
       if (fixedUrl && fixedUrl !== (n.image_url || n.imageUrl)) {
         // Update in database if URL was fixed (async, don't wait)
-        supabaseAdmin
-          .from('notifications')
-          .update({ image_url: fixedUrl })
-          .eq('id', notification.id)
+        Promise.resolve(
+          supabaseAdmin
+            .from('notifications')
+            .update({ image_url: fixedUrl })
+            .eq('id', notification.id)
+        )
           .then(() => {
             logger.info('Updated notification image URL in database', { notificationId: notification.id })
           })
@@ -668,10 +670,12 @@ export async function getNotificationById(notificationId: string): Promise<{ not
 
     // Update in database if URL was fixed (async, don't wait)
     if (fixedUrl !== originalUrl && fixedUrl) {
-      supabaseAdmin
-        .from('notifications')
-        .update({ image_url: fixedUrl })
-        .eq('id', notificationId)
+      Promise.resolve(
+        supabaseAdmin
+          .from('notifications')
+          .update({ image_url: fixedUrl })
+          .eq('id', notificationId)
+      )
         .then(() => {
           logger.info('Updated notification image URL in database', { notificationId })
         })

@@ -8,6 +8,7 @@ import { getProfileByUserId } from '@/lib/profiles'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { format } from 'date-fns'
 import { AdminHeader } from '@/components/admin/AdminHeader'
+import { logger } from '@/lib/logger'
 
 interface BranchStats {
   total: number
@@ -96,7 +97,7 @@ export default function BranchesScreen() {
       }
 
       if (statsResult.error) {
-        console.error('Error loading statistics:', statsResult.error)
+        logger.error('Error loading statistics', statsResult.error)
       } else {
         setStats({
           total: statsResult.total,

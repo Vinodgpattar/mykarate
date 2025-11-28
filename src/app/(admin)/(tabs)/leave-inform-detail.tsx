@@ -254,6 +254,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFF8E7',
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: '#FFF8E7',
+  },
+  title: {
+    fontWeight: '600',
+    color: '#1A1A1A',
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',

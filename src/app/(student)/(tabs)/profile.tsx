@@ -9,6 +9,7 @@ import { format } from 'date-fns'
 import { useQueryClient } from '@tanstack/react-query'
 import { StudentHeader } from '@/components/student/StudentHeader'
 import { COLORS, SPACING, RADIUS, ELEVATION } from '@/lib/design-system'
+import { logger } from '@/lib/logger'
 
 export default function StudentProfileScreen() {
   const router = useRouter()
@@ -86,7 +87,7 @@ export default function StudentProfileScreen() {
               // Navigate to login
               router.replace('/(auth)/login')
             } catch (error) {
-              console.error('Error signing out:', error)
+              logger.error('Error signing out', error instanceof Error ? error : new Error(String(error)))
               Alert.alert('Error', 'Failed to sign out. Please try again.')
             }
           },

@@ -67,8 +67,8 @@ async function getBucketUsage(bucketId: string): Promise<StorageUsage | null> {
         if (file.metadata && file.metadata.size) {
           totalSize += parseInt(file.metadata.size, 10) || 0
           fileCount++
-        } else if (file.size) {
-          totalSize += file.size
+        } else if ('size' in file && file.size) {
+          totalSize += (file.size as number)
           fileCount++
         }
       }

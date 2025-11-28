@@ -267,7 +267,7 @@ export async function createStudent(
 
     // Check if auth user already exists
     const { data: { users } } = await supabaseAdmin.auth.admin.listUsers()
-    const existingUser = users?.find(u => u.email === normalizedEmail)
+    const existingUser = users?.find((u: any) => u.email === normalizedEmail)
     if (existingUser) {
       logger.warn('Auth user already exists for email', { email: normalizedEmail })
       return {
@@ -346,7 +346,7 @@ export async function createStudent(
       // Cleanup: delete auth user and profile if student creation fails
       logger.error('Error creating student, cleaning up', studentError as Error)
       await supabaseAdmin.auth.admin.deleteUser(userId).catch(() => {})
-      await supabaseAdmin.from('profiles').delete().eq('user_id', userId).catch(() => {})
+      Promise.resolve(supabaseAdmin.from('profiles').delete().eq('user_id', userId)).catch(() => {})
       
       // Check if it's a duplicate student_id error and retry
       if (studentError.code === '23505' || studentError.message.includes('duplicate') || studentError.message.includes('unique')) {

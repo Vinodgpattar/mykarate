@@ -4,6 +4,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useState, useEffect } from 'react'
 import { getStorageSummary, formatBytes, type StorageSummary } from '@/lib/storage-monitoring'
 import { COLORS, SPACING, RADIUS } from '@/lib/design-system'
+import { logger } from '@/lib/logger'
 
 export function StorageMonitoringSection() {
   const [storageSummary, setStorageSummary] = useState<StorageSummary | null>(null)
@@ -26,7 +27,7 @@ export function StorageMonitoringSection() {
       }
     } catch (err) {
       setError('Error loading storage information')
-      console.error('Error loading storage summary:', err)
+      logger.error('Error loading storage summary', err instanceof Error ? err : new Error(String(err)))
     } finally {
       setLoading(false)
     }
@@ -37,13 +38,13 @@ export function StorageMonitoringSection() {
       <Card style={styles.card}>
         <Card.Content>
           <View style={styles.header}>
-            <MaterialCommunityIcons name="database" size={24} color={COLORS.primary} />
+            <MaterialCommunityIcons name="database" size={24} color={COLORS.brandPurple} />
             <Text variant="titleMedium" style={styles.title}>
               Storage Usage
             </Text>
           </View>
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color={COLORS.primary} />
+            <ActivityIndicator size="small" color={COLORS.brandPurple} />
             <Text variant="bodySmall" style={styles.loadingText}>
               Loading storage information...
             </Text>
@@ -58,7 +59,7 @@ export function StorageMonitoringSection() {
       <Card style={styles.card}>
         <Card.Content>
           <View style={styles.header}>
-            <MaterialCommunityIcons name="database" size={24} color={COLORS.primary} />
+            <MaterialCommunityIcons name="database" size={24} color={COLORS.brandPurple} />
             <Text variant="titleMedium" style={styles.title}>
               Storage Usage
             </Text>
@@ -108,7 +109,7 @@ export function StorageMonitoringSection() {
     <Card style={styles.card}>
       <Card.Content>
         <View style={styles.header}>
-          <MaterialCommunityIcons name="database" size={24} color={COLORS.primary} />
+          <MaterialCommunityIcons name="database" size={24} color={COLORS.brandPurple} />
           <Text variant="titleMedium" style={styles.title}>
             Storage Usage
           </Text>
@@ -214,7 +215,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontWeight: '700',
-    color: COLORS.text,
+    color: COLORS.textPrimary,
   },
   loadingContainer: {
     flexDirection: 'row',
@@ -243,7 +244,7 @@ const styles = StyleSheet.create({
   },
   usageValue: {
     fontWeight: '700',
-    color: COLORS.text,
+    color: COLORS.textPrimary,
     marginBottom: 2,
   },
   usageLabel: {
@@ -283,7 +284,7 @@ const styles = StyleSheet.create({
   },
   bucketsTitle: {
     fontWeight: '600',
-    color: COLORS.text,
+    color: COLORS.textPrimary,
     marginBottom: SPACING.sm,
   },
   bucketItem: {
@@ -300,7 +301,7 @@ const styles = StyleSheet.create({
   },
   bucketName: {
     fontWeight: '600',
-    color: COLORS.text,
+    color: COLORS.textPrimary,
     flex: 1,
   },
   bucketSize: {

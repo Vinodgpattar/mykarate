@@ -84,7 +84,7 @@ export default function MoreScreen() {
               >
                 <Card style={styles.card}>
                   <LinearGradient
-                    colors={feature.gradient}
+                    colors={feature.gradient as [string, string, ...string[]]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={styles.gradient}
@@ -114,7 +114,7 @@ export default function MoreScreen() {
               >
                 <Card style={styles.card}>
                   <LinearGradient
-                    colors={feature.gradient}
+                    colors={feature.gradient as [string, string, ...string[]]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={styles.gradient}

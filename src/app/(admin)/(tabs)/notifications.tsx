@@ -190,8 +190,8 @@ export default function AdminNotificationsScreen() {
               selected={selectedType === type}
               onPress={() => setSelectedType(type)}
               style={styles.chip}
-              selectedColor={TYPE_COLORS[type]}
-              icon={() => <MaterialCommunityIcons name={TYPE_ICONS[type]} size={16} />}
+              selectedColor={TYPE_COLORS[type][0]}
+              icon={() => <MaterialCommunityIcons name={TYPE_ICONS[type] as any} size={16} />}
             >
               {type.charAt(0).toUpperCase() + type.slice(1)}
             </Chip>
@@ -256,7 +256,8 @@ export default function AdminNotificationsScreen() {
         ) : (
           filteredNotifications.map((notification) => {
             const icon = TYPE_ICONS[notification.type]
-            const colors = TYPE_COLORS[notification.type] || ['#7B2CBF', '#6D28D9']
+            const colorValue = TYPE_COLORS[notification.type] || '#7B2CBF'
+            const colors = (Array.isArray(colorValue) ? colorValue : [colorValue, colorValue]) as [string, string, ...string[]]
             const timeAgo = notification.createdAt && !isNaN(new Date(notification.createdAt).getTime())
               ? formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })
               : 'Recently'
@@ -276,8 +277,8 @@ export default function AdminNotificationsScreen() {
                 >
                   <View style={styles.bannerContent}>
                     <View style={styles.bannerLeft}>
-                      <View style={styles.iconContainer}>
-                        <MaterialCommunityIcons name={icon as any} size={24} color="#fff" />
+                      <View style={styles.bannerIconContainer}>
+                        <MaterialCommunityIcons name={(icon || 'megaphone') as any} size={24} color="#fff" />
                       </View>
                       <View style={styles.textContainer}>
                         <View style={styles.titleRow}>
@@ -483,7 +484,7 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
     flex: 1,
   },
-  iconContainer: {
+  bannerIconContainer: {
     width: 44,
     height: 44,
     borderRadius: 22,

@@ -174,14 +174,14 @@ export default function NotificationDetailsScreen() {
 
           return (
             <LinearGradient
-              colors={[typeColor, `${typeColor}DD`, `${typeColor}CC`]}
+              colors={[typeColor, `${typeColor}DD`, `${typeColor}CC`] as [string, string, string]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.banner}
             >
               <View style={styles.bannerContent}>
                 <View style={styles.bannerIconContainer}>
-                  <MaterialCommunityIcons name={typeIcon} size={44} color="#FFFFFF" />
+                  <MaterialCommunityIcons name={typeIcon as any} size={44} color="#FFFFFF" />
                 </View>
                 <View style={styles.bannerTextContainer}>
                   <Text variant="headlineSmall" style={styles.bannerTitle}>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { getBranches, type Branch } from '@/lib/branches'
 import { getStudentStatistics } from '@/lib/students'
+import { logger } from '@/lib/logger'
 
 interface StudentStats {
   total: number
@@ -45,7 +46,7 @@ export function useAdminDashboard() {
         setError(studentStatsResult.error)
       }
     } catch (err) {
-      console.error('useAdminDashboard: Error loading data:', err)
+      logger.error('useAdminDashboard: Error loading data', err instanceof Error ? err : new Error(String(err)))
       setError(err as Error)
     } finally {
       setLoading(false)

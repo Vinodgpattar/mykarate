@@ -31,7 +31,7 @@ export function HeroWelcomeSection({ userName, profileImageUrl }: HeroWelcomeSec
 
   return (
     <LinearGradient
-      colors={['#7B2CBF', '#9D4EDD', '#7B2CBF']}
+      colors={['#7B2CBF', '#9D4EDD', '#7B2CBF'] as [string, string, string]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={styles.gradient}

@@ -23,7 +23,7 @@ export async function compressImage(
   try {
     // Get original image info
     const originalInfo = await FileSystem.getInfoAsync(imageUri)
-    const originalSize = originalInfo.size || 0
+    const originalSize = (originalInfo.exists && 'size' in originalInfo) ? originalInfo.size : 0
 
     // Determine max size based on type
     const maxSize = 
@@ -56,7 +56,7 @@ export async function compressImage(
 
     // Check if compressed size is acceptable
     let compressedInfo = await FileSystem.getInfoAsync(manipulatedUri)
-    let compressedSize = compressedInfo.size || 0
+    let compressedSize = (compressedInfo.exists && 'size' in compressedInfo) ? compressedInfo.size : 0
 
     // If still too large, reduce quality iteratively
     while (compressedSize > maxSize && quality > MIN_COMPRESSION_QUALITY) {
@@ -78,7 +78,7 @@ export async function compressImage(
       )
       manipulatedUri = recompressed.uri
       compressedInfo = await FileSystem.getInfoAsync(manipulatedUri)
-      compressedSize = compressedInfo.size || 0
+      compressedSize = (compressedInfo.exists && 'size' in compressedInfo) ? compressedInfo.size : 0
     }
 
     logger.info('Image compressed', {
@@ -94,7 +94,8 @@ export async function compressImage(
     logger.error('Error compressing image', error as Error)
     // Return original if compression fails
     const info = await FileSystem.getInfoAsync(imageUri)
-    return { uri: imageUri, size: info.size || 0, originalSize: info.size || 0 }
+    const size = (info.exists && 'size' in info) ? info.size : 0
+    return { uri: imageUri, size, originalSize: size }
   }
 }
 

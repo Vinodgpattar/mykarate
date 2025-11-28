@@ -12,6 +12,18 @@ interface LogContext {
   [key: string]: unknown
 }
 
+// Helper to convert Error to LogContext
+function errorToContext(error: Error | unknown): LogContext | undefined {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+    }
+  }
+  return undefined
+}
+
 class Logger {
   private isDevelopment: boolean
 
@@ -60,31 +72,67 @@ class Logger {
     // In production, could send to analytics service
   }
 
-  warn(message: string, context?: LogContext): void {
-    const sanitizedContext = this.sanitizeContext(context)
+  warn(message: string, context?: LogContext | Error): void {
+    // Handle Error objects passed as context
+    let actualContext: LogContext | undefined = undefined
+    if (context instanceof Error) {
+      actualContext = errorToContext(context)
+    } else {
+      actualContext = context
+    }
+    
+    const sanitizedContext = this.sanitizeContext(actualContext)
     const formatted = this.formatMessage('warn', message, sanitizedContext)
     
     if (this.isDevelopment) {
       console.warn(formatted)
-    } else {
-      // In production, send to Sentry
-      captureMessage(message, 'warning', sanitizedContext)
-    }
-  }
-
-  error(message: string, error?: Error | unknown, context?: LogContext): void {
-    const sanitizedContext = this.sanitizeContext(context)
-    const formatted = this.formatMessage('error', message, sanitizedContext)
-    
-    if (this.isDevelopment) {
-      console.error(formatted, error || '')
-      if (error instanceof Error) {
-        console.error('Error stack:', error.stack)
+      if (context instanceof Error) {
+        console.warn('Error:', context)
       }
     } else {
       // In production, send to Sentry
-      if (error instanceof Error) {
-        captureException(error, sanitizedContext)
+      if (context instanceof Error) {
+        captureException(context, sanitizedContext)
+      } else {
+        captureMessage(message, 'warning', sanitizedContext)
+      }
+    }
+  }
+
+  error(message: string, error?: Error | unknown, context?: LogContext | Error): void {
+    // Handle case where error is passed as second parameter (context)
+    let actualError: Error | unknown = undefined
+    let actualContext: LogContext | undefined = undefined
+    
+    if (error instanceof Error) {
+      actualError = error
+      actualContext = context as LogContext | undefined
+    } else if (context instanceof Error) {
+      actualError = context
+      actualContext = undefined
+    } else {
+      actualError = error
+      actualContext = context as LogContext | undefined
+    }
+    
+    // Merge error context if it's an Error
+    const errorContext = errorToContext(actualError)
+    const mergedContext = actualContext 
+      ? { ...actualContext, ...errorContext }
+      : errorContext
+    
+    const sanitizedContext = this.sanitizeContext(mergedContext)
+    const formatted = this.formatMessage('error', message, sanitizedContext)
+    
+    if (this.isDevelopment) {
+      console.error(formatted, actualError || '')
+      if (actualError instanceof Error) {
+        console.error('Error stack:', actualError.stack)
+      }
+    } else {
+      // In production, send to Sentry
+      if (actualError instanceof Error) {
+        captureException(actualError, sanitizedContext)
       } else {
         captureMessage(message, 'error', sanitizedContext)
       }

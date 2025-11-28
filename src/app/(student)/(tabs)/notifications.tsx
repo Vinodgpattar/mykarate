@@ -184,7 +184,7 @@ export default function StudentNotificationsScreen() {
                 style={styles.notificationContainer}
               >
                 <LinearGradient
-                  colors={colors}
+                  colors={colors as [string, string]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   style={styles.notificationBanner}

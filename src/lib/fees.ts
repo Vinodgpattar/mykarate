@@ -666,10 +666,12 @@ export async function getStudentFees(
           dueDate: fee.due_date,
           today: new Date().toISOString().split('T')[0],
         })
-        supabaseAdmin
-          .from('student_fees')
-          .update({ status: correctStatus })
-          .eq('id', fee.id)
+        Promise.resolve(
+          supabaseAdmin
+            .from('student_fees')
+            .update({ status: correctStatus })
+            .eq('id', fee.id)
+        )
           .then(() => {
             logger.debug('Fee status corrected in database', { feeId: fee.id, newStatus: correctStatus })
           })
@@ -1524,10 +1526,12 @@ export async function getAllFees(options?: {
           dueDate: fee.due_date,
           today: new Date().toISOString().split('T')[0],
         })
-        supabaseAdmin
-          .from('student_fees')
-          .update({ status: correctStatus })
-          .eq('id', fee.id)
+        Promise.resolve(
+          supabaseAdmin
+            .from('student_fees')
+            .update({ status: correctStatus })
+            .eq('id', fee.id)
+        )
           .then(() => {
             logger.debug('Fee status corrected in database', { feeId: fee.id, newStatus: correctStatus })
           })

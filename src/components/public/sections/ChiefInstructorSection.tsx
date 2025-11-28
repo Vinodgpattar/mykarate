@@ -74,9 +74,9 @@ export function ChiefInstructorSection({ instructor }: ChiefInstructorSectionPro
             develop not just physical strength, but discipline, respect, and unwavering character.
           </Text>
 
-          {instructor.bio && (
+          {instructor.description && (
             <Text variant="bodyMedium" style={styles.bio}>
-              {instructor.bio}
+              {instructor.description}
             </Text>
           )}
 

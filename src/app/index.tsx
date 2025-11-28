@@ -4,6 +4,7 @@ import { useRouter, useSegments } from 'expo-router'
 import { useAuth } from '@/context/AuthContext'
 import { Text } from 'react-native-paper'
 import { getProfileByUserId } from '@/lib/profiles'
+import { logger } from '@/lib/logger'
 
 export default function Index() {
   const { session, loading, signOut } = useAuth()
@@ -26,7 +27,7 @@ export default function Index() {
     
     // If we're already on a valid route, don't try to route again
     if (isOnPublicRoute || isOnAuthRoute || isOnAdminRoute || isOnStudentRoute) {
-      console.log('Index: Already on route:', segments.join('/'), '- skipping routing')
+      logger.debug('Index: Already on route, skipping routing', { route: segments.join('/') })
       return
     }
 
@@ -40,7 +41,7 @@ export default function Index() {
 
       try {
         if (!session) {
-          console.log('Index: No session, redirecting to public view')
+          logger.debug('Index: No session, redirecting to public view')
           hasRoutedRef.current = true
           router.replace('/(public)')
           return
@@ -52,7 +53,7 @@ export default function Index() {
             const result = await getProfileByUserId(session.user.id)
             
             if (result.error || !result.profile) {
-              console.warn('Index: No profile found - redirecting to login')
+              logger.warn('Index: No profile found - redirecting to login')
               await signOut()
               hasRoutedRef.current = true
               router.replace('/(auth)/login')
@@ -62,38 +63,38 @@ export default function Index() {
             const role = result.profile.role
 
             if (role === 'student') {
-              console.log('Index: Student role confirmed, routing to student dashboard')
+              logger.debug('Index: Student role confirmed, routing to student dashboard')
               hasRoutedRef.current = true
               router.replace('/(student)/(tabs)/dashboard')
               return
             }
 
             if (role === 'admin' || role === 'super_admin') {
-              console.log('Index: Admin role confirmed, routing to admin dashboard')
+              logger.debug('Index: Admin role confirmed, routing to admin dashboard')
               hasRoutedRef.current = true
               router.replace('/(admin)/(tabs)')
               return
             }
 
             // Unknown role - deny access
-            console.warn('Index: Unknown role - redirecting to login')
+            logger.warn('Index: Unknown role - redirecting to login', { role })
             await signOut()
             hasRoutedRef.current = true
             router.replace('/(auth)/login')
           } catch (error) {
-            console.error('Index: Error checking user role:', error)
+            logger.error('Index: Error checking user role', error instanceof Error ? error : new Error(String(error)))
             await signOut()
             hasRoutedRef.current = true
             router.replace('/(auth)/login')
           }
         } else {
-          console.error('Index: No user ID in session - redirecting to login')
+          logger.error('Index: No user ID in session - redirecting to login', new Error('No user ID in session'))
           await signOut()
           hasRoutedRef.current = true
           router.replace('/(auth)/login')
         }
       } catch (error) {
-        console.error('Index: Routing error:', error)
+        logger.error('Index: Routing error', error instanceof Error ? error : new Error(String(error)))
         routingInProgressRef.current = false
       } finally {
         routingInProgressRef.current = false
