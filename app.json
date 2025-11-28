@@ -31,7 +31,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/icon.png",
+          "image": "./assets/karateicon.png",
           "resizeMode": "contain",
           "backgroundColor": "#FFF8E7"
         }
