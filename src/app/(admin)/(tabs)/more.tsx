@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
 import { AdminHeader } from '@/components/admin/AdminHeader'
+import { StorageMonitoringSection } from '@/components/admin/dashboard/StorageMonitoringSection'
 import { COLORS, RADIUS, SPACING } from '@/lib/design-system'
 
 interface Feature {
@@ -136,6 +137,11 @@ export default function MoreScreen() {
           </View>
         </View>
 
+        {/* Storage Usage Section */}
+        <View style={styles.storageSection}>
+          <StorageMonitoringSection />
+        </View>
+
         {/* Bottom Padding */}
         <View style={styles.bottomPadding} />
       </ScrollView>
@@ -197,6 +203,9 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     textAlign: 'center',
     fontSize: 14,
+  },
+  storageSection: {
+    marginTop: SPACING.xl,
   },
   bottomPadding: {
     height: SPACING.xl,

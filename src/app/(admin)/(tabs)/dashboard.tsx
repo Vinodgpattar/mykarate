@@ -17,7 +17,6 @@ import { AllFeaturesSection } from '@/components/admin/dashboard/AllFeaturesSect
 import { ErrorState } from '@/components/admin/dashboard/ErrorState'
 import { HeroWelcomeSection } from '@/components/admin/dashboard/HeroWelcomeSection'
 import { QuickInsightsCard } from '@/components/admin/dashboard/QuickInsightsCard'
-import { StorageMonitoringSection } from '@/components/admin/dashboard/StorageMonitoringSection'
 import { COLORS, SPACING } from '@/lib/design-system'
 
 export default function AdminDashboardScreen() {
@@ -165,9 +164,6 @@ export default function AdminDashboardScreen() {
           studentStats={studentStats}
           branches={branches}
         />
-
-        {/* Storage Monitoring */}
-        <StorageMonitoringSection />
 
         {/* Quick Actions */}
         <QuickActionsSection />
