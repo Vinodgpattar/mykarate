@@ -1,8 +1,8 @@
 /**
  * Public Homepage - Redesigned Version
- * Version: 2.0
+ * Version: 2.2 - Force cache refresh
  * Updated: 2025-01-28
- * Cache-busting identifier to ensure latest version is bundled
+ * Cache-busting: Complete file rewrite to force Metro bundler to treat as new file
  */
 import { useState } from 'react'
 import { View, StyleSheet, ScrollView, ActivityIndicator } from 'react-native'
