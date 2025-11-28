@@ -30,7 +30,7 @@ export function PradeepHeroSection({ instructor }: PradeepHeroSectionProps) {
                 <Image
                   source={{ uri: instructor.profile_image_url }}
                   style={styles.heroImage}
-                  resizeMode="cover"
+                  resizeMode="contain"
                   onError={() => {
                     logger.warn('Hero instructor image failed to load', { url: instructor.profile_image_url })
                   }}
@@ -38,7 +38,7 @@ export function PradeepHeroSection({ instructor }: PradeepHeroSectionProps) {
               </View>
             ) : (
               <View style={styles.imagePlaceholder}>
-                <MaterialCommunityIcons name="account" size={80} color="#9CA3AF" />
+                <MaterialCommunityIcons name="account" size={IS_MOBILE ? 60 : 80} color="#9CA3AF" />
               </View>
             )}
           </View>
@@ -121,23 +121,39 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 0,
+    padding: IS_MOBILE ? 20 : 24,
+    paddingBottom: IS_MOBILE ? 16 : 20,
   },
   imageFrame: {
     width: '100%',
-    aspectRatio: IS_MOBILE ? 4/3 : 16/9,
-    borderRadius: 0,
+    maxWidth: IS_MOBILE ? '100%' : 600,
+    aspectRatio: IS_MOBILE ? 3/4 : 4/5,
+    borderRadius: IS_MOBILE ? 16 : 18,
     overflow: 'hidden',
     backgroundColor: '#2A2A2A',
+    borderWidth: IS_MOBILE ? 2 : 3,
+    borderColor: '#7B2CBF',
+    padding: 0,
+    elevation: 3,
+    shadowColor: '#7B2CBF',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
   },
   heroImage: {
     width: '100%',
     height: '100%',
+    borderRadius: IS_MOBILE ? 14 : 15,
   },
   imagePlaceholder: {
     width: '100%',
-    aspectRatio: IS_MOBILE ? 4/3 : 16/9,
+    maxWidth: IS_MOBILE ? '100%' : 600,
+    aspectRatio: IS_MOBILE ? 3/4 : 4/5,
+    borderRadius: IS_MOBILE ? 16 : 18,
     backgroundColor: '#F9FAFB',
+    borderWidth: IS_MOBILE ? 2 : 3,
+    borderColor: '#7B2CBF',
+    borderStyle: 'dashed',
     justifyContent: 'center',
     alignItems: 'center',
   },
