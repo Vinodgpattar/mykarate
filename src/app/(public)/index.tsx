@@ -1,8 +1,8 @@
 /**
  * Public Homepage - Redesigned Version
- * Version: 3.0 - Using new component sections
+ * Version: 4.0 - New hero section with Pradeep's image
  * Updated: 2025-01-28
- * New design with HeroSection, FeaturedInstructorsSection, and SlidableGallerySection
+ * Structure: Header -> Hero (Pradeep) -> Gallery -> Chief Instructor -> Featured Instructors
  */
 import { useState } from 'react'
 import { View, StyleSheet, ScrollView, ActivityIndicator } from 'react-native'
@@ -11,11 +11,10 @@ import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { usePublicData } from '@/lib/public/hooks/usePublicData'
 import { PublicHeader } from '@/components/public/shared/PublicHeader'
-import { HeroSection } from '@/components/public/sections/HeroSection'
-import { FeaturedInstructorsSection } from '@/components/public/sections/FeaturedInstructorsSection'
+import { PradeepHeroSection } from '@/components/public/sections/PradeepHeroSection'
 import { SlidableGallerySection } from '@/components/public/sections/SlidableGallerySection'
-import { PradeepLegacySection } from '@/components/public/sections/PradeepLegacySection'
-import { LocationsSection } from '@/components/public/sections/LocationsSection'
+import { ChiefInstructorSection } from '@/components/public/sections/ChiefInstructorSection'
+import { FeaturedInstructorsSection } from '@/components/public/sections/FeaturedInstructorsSection'
 import { InstructorDetailModal } from '@/components/public/modals/InstructorDetailModal'
 import type { Instructor, PublicGalleryItem } from '@/lib/public/types/public.types'
 
@@ -27,10 +26,15 @@ export default function PublicHomeScreen() {
   const [selectedGalleryItem, setSelectedGalleryItem] = useState<PublicGalleryItem | null>(null)
   const [snackbar, setSnackbar] = useState({ visible: false, message: '' })
 
-  // Get hero image from Pradeep Kumar instructor or first instructor
-  const heroImageUrl =
-    data?.instructors.find((inst) => inst.name.toLowerCase().includes('pradeep'))
-      ?.profile_image_url || data?.instructors[0]?.profile_image_url
+  // Get Pradeep instructor for hero section
+  const pradeepInstructor = data?.instructors.find((inst) =>
+    inst.name.toLowerCase().includes('pradeep')
+  ) || null
+
+  // Get chief instructor (first instructor or non-Pradeep)
+  const chiefInstructor = data?.instructors.find((inst) =>
+    !inst.name.toLowerCase().includes('pradeep')
+  ) || data?.instructors[0] || null
 
   // Get dojo name from first branch
   const dojoName = data?.branches[0]?.name || 'SHOTOKAN KARATE-DO YOUTH SPORTS CLUB® HUBBALLI'
@@ -84,31 +88,23 @@ export default function PublicHomeScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* NEW HERO SECTION - Full screen with image background */}
-        <HeroSection
-          heroImageUrl={heroImageUrl}
-          dojoName={dojoName}
-          tagline="Master Your Mind, Body & Spirit"
-          studentCount={data.studentCount}
-          branchCount={data.branches.length}
-          yearsInOperation={10}
-        />
+        {/* HERO SECTION - Pradeep's large image with text below */}
+        <PradeepHeroSection instructor={pradeepInstructor} />
 
-        {/* LEGACY – SHIHAN PRADEEP KUMAR */}
-        <PradeepLegacySection instructors={data.instructors} />
-
-        {/* NEW GALLERY SECTION - Horizontal scrollable */}
+        {/* GALLERY SECTION - Horizontal scrollable */}
         <SlidableGallerySection
           galleryItems={data.galleryItems}
           onViewAllPress={handleViewAllGallery}
           onItemPress={handleGalleryItemPress}
         />
 
-        {/* NEW FEATURED INSTRUCTORS SECTION - Horizontal scrollable */}
-        <FeaturedInstructorsSection instructors={data.instructors} />
+        {/* CHIEF INSTRUCTOR SECTION */}
+        {chiefInstructor && (
+          <ChiefInstructorSection instructor={chiefInstructor} />
+        )}
 
-        {/* LOCATIONS MAP-STYLE LIST */}
-        <LocationsSection branches={data.branches} />
+        {/* FEATURED INSTRUCTORS SECTION - Horizontal scrollable */}
+        <FeaturedInstructorsSection instructors={data.instructors} />
       </ScrollView>
 
       {/* Modals */}
