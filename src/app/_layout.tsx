@@ -60,29 +60,50 @@ export default function RootLayout() {
   React.useEffect(() => {
     async function checkForUpdates() {
       try {
+        // Check if updates are enabled
+        if (!Updates.isEnabled) {
+          logger.warn('Updates are not enabled. This might be a development build or updates are disabled.')
+          return
+        }
+
         // Only check for updates in production builds
         if (__DEV__) {
           logger.debug('Skipping update check in development mode')
           return
         }
 
+        logger.info('Checking for app updates...')
         const update = await Updates.checkForUpdateAsync()
         
         if (update.isAvailable) {
-          logger.info('Update available, downloading...')
-          await Updates.fetchUpdateAsync()
-          logger.info('Update downloaded, will apply on next app restart')
-          // Optionally, you can reload immediately:
-          // await Updates.reloadAsync()
+          logger.info('Update available, downloading...', { 
+            manifest: update.manifest?.id,
+            createdAt: update.manifest?.createdAt 
+          })
+          const result = await Updates.fetchUpdateAsync()
+          logger.info('Update downloaded successfully', { 
+            isNew: result.isNew,
+            manifest: result.manifest?.id 
+          })
+          
+          // Reload immediately to apply the update
+          logger.info('Reloading app to apply update...')
+          await Updates.reloadAsync()
         } else {
-          logger.debug('App is up to date')
+          logger.info('App is up to date')
         }
       } catch (error) {
         logger.error('Error checking for updates', error as Error)
+        // Don't throw - update failures shouldn't break the app
       }
     }
 
-    checkForUpdates()
+    // Small delay to ensure app is fully initialized
+    const timeoutId = setTimeout(() => {
+      checkForUpdates()
+    }, 1000)
+
+    return () => clearTimeout(timeoutId)
   }, [])
 
   return (
