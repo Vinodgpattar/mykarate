@@ -12,6 +12,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { hasConfigError, configError } from '@/lib/supabase'
 import { ConfigErrorScreen } from '@/components/ConfigErrorScreen'
+import * as Updates from 'expo-updates'
+import { logger } from '@/lib/logger'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -52,6 +54,35 @@ export default function RootLayout() {
     initSentry()
     // ErrorBoundary component will handle React errors
     // Sentry will capture errors if configured
+  }, [])
+
+  // Check for app updates on startup
+  React.useEffect(() => {
+    async function checkForUpdates() {
+      try {
+        // Only check for updates in production builds
+        if (__DEV__) {
+          logger.debug('Skipping update check in development mode')
+          return
+        }
+
+        const update = await Updates.checkForUpdateAsync()
+        
+        if (update.isAvailable) {
+          logger.info('Update available, downloading...')
+          await Updates.fetchUpdateAsync()
+          logger.info('Update downloaded, will apply on next app restart')
+          // Optionally, you can reload immediately:
+          // await Updates.reloadAsync()
+        } else {
+          logger.debug('App is up to date')
+        }
+      } catch (error) {
+        logger.error('Error checking for updates', error as Error)
+      }
+    }
+
+    checkForUpdates()
   }, [])
 
   return (
