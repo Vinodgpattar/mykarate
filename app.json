@@ -2,7 +2,7 @@
   "expo": {
     "name": "Karate",
     "slug": "karate-dojo-mobile",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "icon": "./assets/karateicon.png",
@@ -50,17 +50,16 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "8f601ea7-1254-497b-844b-5645f7ab1914"
+        "projectId": "300cdaf4-66d6-44f6-97a2-218d005054b5"
       }
     },
     "updates": {
-      "url": "https://u.expo.dev/8f601ea7-1254-497b-844b-5645f7ab1914",
       "fallbackToCacheTimeout": 0,
-      "checkAutomatically": "ON_LOAD"
+      "checkAutomatically": "ON_LOAD",
+      "url": "https://u.expo.dev/300cdaf4-66d6-44f6-97a2-218d005054b5"
     },
     "runtimeVersion": {
       "policy": "appVersion"
-    },
-    "owner": "vinodgp"
+    }
   }
 }

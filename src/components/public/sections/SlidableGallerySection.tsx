@@ -3,6 +3,7 @@ import { View, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, Acti
 import { Text, Button } from 'react-native-paper'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import type { PublicGalleryItem } from '@/lib/public/types/public.types'
+import { extractYouTubeVideoId } from '@/components/public/YouTubePlayer'
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window')
 const IS_MOBILE = SCREEN_WIDTH < 768
@@ -19,10 +20,12 @@ export function SlidableGallerySection({ galleryItems, onViewAllPress, onItemPre
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set())
   const [imageLoading, setImageLoading] = useState<Set<string>>(new Set())
 
-  // Filter to show only images (exclude videos for slider)
-  const imageItems = galleryItems.filter(item => item.media_type === 'image' && item.is_active)
+  // Filter to show images and YouTube videos (exclude uploaded videos for slider)
+  const displayItems = galleryItems.filter(
+    item => (item.media_type === 'image' || item.media_type === 'youtube') && item.is_active
+  )
 
-  if (imageItems.length === 0) {
+  if (displayItems.length === 0) {
     return null
   }
 
@@ -66,36 +69,71 @@ export function SlidableGallerySection({ galleryItems, onViewAllPress, onItemPre
         decelerationRate="fast"
         snapToAlignment="start"
       >
-        {imageItems.map((item) => (
-          <TouchableOpacity
-            key={item.id}
-            style={[styles.galleryItem, { width: ITEM_WIDTH }]}
-            onPress={() => onItemPress(item)}
-            activeOpacity={0.8}
-          >
-            <View style={styles.imageContainer}>
-              {imageLoading.has(item.id) && (
-                <View style={styles.loadingOverlay}>
-                  <ActivityIndicator size="small" color="#7B2CBF" />
+        {displayItems.map((item) => {
+          // Handle YouTube videos
+          if (item.media_type === 'youtube') {
+            const videoId = extractYouTubeVideoId(item.file_url)
+            const thumbnailUrl = videoId ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` : null
+            
+            return (
+              <TouchableOpacity
+                key={item.id}
+                style={[styles.galleryItem, { width: ITEM_WIDTH }]}
+                onPress={() => onItemPress(item)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.imageContainer}>
+                  {thumbnailUrl ? (
+                    <Image
+                      source={{ uri: thumbnailUrl }}
+                      style={styles.image}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.errorPlaceholder}>
+                      <MaterialCommunityIcons name="youtube" size={48} color="#FF0000" />
+                    </View>
+                  )}
+                  <View style={styles.youtubeOverlay}>
+                    <MaterialCommunityIcons name="play-circle" size={48} color="#FFFFFF" />
+                  </View>
                 </View>
-              )}
-              {imageErrors.has(item.id) ? (
-                <View style={styles.errorPlaceholder}>
-                  <MaterialCommunityIcons name="image-off" size={32} color="#9CA3AF" />
-                </View>
-              ) : (
-                <Image
-                  source={{ uri: item.file_url }}
-                  style={styles.image}
-                  resizeMode="cover"
-                  onLoadStart={() => handleImageLoadStart(item.id)}
-                  onLoadEnd={() => handleImageLoadEnd(item.id)}
-                  onError={() => handleImageError(item.id)}
-                />
-              )}
-            </View>
-          </TouchableOpacity>
-        ))}
+              </TouchableOpacity>
+            )
+          }
+          
+          // Handle images
+          return (
+            <TouchableOpacity
+              key={item.id}
+              style={[styles.galleryItem, { width: ITEM_WIDTH }]}
+              onPress={() => onItemPress(item)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.imageContainer}>
+                {imageLoading.has(item.id) && (
+                  <View style={styles.loadingOverlay}>
+                    <ActivityIndicator size="small" color="#7B2CBF" />
+                  </View>
+                )}
+                {imageErrors.has(item.id) ? (
+                  <View style={styles.errorPlaceholder}>
+                    <MaterialCommunityIcons name="image-off" size={32} color="#9CA3AF" />
+                  </View>
+                ) : (
+                  <Image
+                    source={{ uri: item.file_url }}
+                    style={styles.image}
+                    resizeMode="cover"
+                    onLoadStart={() => handleImageLoadStart(item.id)}
+                    onLoadEnd={() => handleImageLoadEnd(item.id)}
+                    onError={() => handleImageError(item.id)}
+                  />
+                )}
+              </View>
+            </TouchableOpacity>
+          )
+        })}
 
         {/* View Full Gallery Button */}
         <TouchableOpacity
@@ -109,7 +147,7 @@ export function SlidableGallerySection({ galleryItems, onViewAllPress, onItemPre
               View Full Gallery
             </Text>
             <Text variant="bodySmall" style={styles.viewAllSubtitle}>
-              See all {imageItems.length} images
+              See all {displayItems.length} items
             </Text>
             <MaterialCommunityIcons name="arrow-right" size={24} color="#7B2CBF" style={styles.arrowIcon} />
           </View>
@@ -189,6 +227,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#F3F4F6',
     borderRadius: IS_MOBILE ? 20 : 24,
+  },
+  youtubeOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
   },
   viewAllCard: {
     marginRight: 0,

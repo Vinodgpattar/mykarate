@@ -38,6 +38,13 @@ const FEATURES: Feature[] = [
     iconColor: '#FFFFFF',
   },
   {
+    icon: 'cog',
+    label: 'Fee Settings',
+    route: '/(admin)/(tabs)/fee-management',
+    gradient: ['#8B5CF6', '#7C3AED'],
+    iconColor: '#FFFFFF',
+  },
+  {
     icon: 'bell-outline',
     label: 'Notifications',
     route: '/(admin)/(tabs)/notifications',
@@ -75,6 +82,7 @@ export default function MoreScreen() {
         </Text>
 
         <View style={styles.featuresGrid}>
+          {/* Top row: 3 cards */}
           <View style={styles.featureRow}>
             {FEATURES.slice(0, 3).map((feature) => (
               <TouchableOpacity
@@ -105,11 +113,43 @@ export default function MoreScreen() {
               </TouchableOpacity>
             ))}
           </View>
+          {/* Middle row: 2 cards */}
           <View style={styles.featureRow}>
-            {FEATURES.slice(3, 6).map((feature) => (
+            {FEATURES.slice(3, 5).map((feature) => (
               <TouchableOpacity
                 key={feature.route}
-                style={styles.featureButton}
+                style={styles.featureButtonTwo}
+                activeOpacity={0.8}
+                onPress={() => router.push(feature.route as any)}
+              >
+                <Card style={styles.card}>
+                  <LinearGradient
+                    colors={feature.gradient as [string, string, ...string[]]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.gradient}
+                  >
+                    <Card.Content style={styles.featureContent}>
+                      <MaterialCommunityIcons
+                        name={feature.icon as any}
+                        size={32}
+                        color={feature.iconColor}
+                      />
+                      <Text variant="bodyMedium" style={styles.featureLabel}>
+                        {feature.label}
+                      </Text>
+                    </Card.Content>
+                  </LinearGradient>
+                </Card>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {/* Bottom row: 2 cards */}
+          <View style={styles.featureRow}>
+            {FEATURES.slice(5, 7).map((feature) => (
+              <TouchableOpacity
+                key={feature.route}
+                style={styles.featureButtonTwo}
                 activeOpacity={0.8}
                 onPress={() => router.push(feature.route as any)}
               >
@@ -182,6 +222,10 @@ const styles = StyleSheet.create({
   featureButton: {
     flex: 1,
   },
+  featureButtonTwo: {
+    flex: 1,
+    maxWidth: '48%', // For 2 cards per row
+  },
   card: {
     elevation: 4,
     borderRadius: RADIUS.lg,
@@ -195,14 +239,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 0,
     gap: SPACING.sm,
-    minHeight: 100,
+    minHeight: 120,
     justifyContent: 'center',
+    paddingVertical: SPACING.xs,
   },
   featureLabel: {
     fontWeight: '600',
     color: '#FFFFFF',
     textAlign: 'center',
-    fontSize: 14,
+    fontSize: 15,
+    lineHeight: 20,
+    paddingHorizontal: 4,
   },
   storageSection: {
     marginTop: SPACING.xl,

@@ -4,7 +4,7 @@ import * as FileSystem from 'expo-file-system/legacy'
 import * as ImageManipulator from 'expo-image-manipulator'
 import type { PublicGalleryItem } from '../types/public.types'
 
-const MAX_IMAGES = 20
+const MAX_IMAGES = 40
 const MAX_VIDEOS = 10 // Increased from 5 to 10
 const MAX_IMAGE_SIZE = 500 * 1024 // 500KB - target size after compression
 const MAX_VIDEO_SIZE = 10 * 1024 * 1024 // 10MB - increased for videos
@@ -336,7 +336,7 @@ export async function uploadGalleryVideo(
  * Create gallery item in database
  */
 export async function createGalleryItem(data: {
-  media_type: 'image' | 'video'
+  media_type: 'image' | 'video' | 'youtube'
   title?: string
   file_url: string
   thumbnail_url?: string

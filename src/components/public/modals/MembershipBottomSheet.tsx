@@ -42,7 +42,7 @@ export function MembershipBottomSheet({ visible, onClose }: MembershipBottomShee
   const yearlyFee = fees.find(f => f.fee_type === 'yearly')
   const gradingFees = fees.filter(f => f.fee_type === 'grading').sort((a, b) => {
     // Sort by belt level order
-    const beltOrder = ['Yellow', 'Orange', 'Green', 'Blue', 'Purple', 'Brown 3', 'Brown 2', 'Brown 1', 'Black']
+    const beltOrder = ['Yellow', 'Orange', 'Green', 'Blue', 'Purple', 'Brown 4', 'Brown 3', 'Brown 2', 'Brown 1', 'Black']
     const aIndex = beltOrder.indexOf(a.belt_level || '')
     const bIndex = beltOrder.indexOf(b.belt_level || '')
     return aIndex - bIndex

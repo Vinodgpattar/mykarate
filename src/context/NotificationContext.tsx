@@ -129,9 +129,22 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   }, [user?.id, permissionsGranted, requestPermissions])
 
   // Register push token when user logs in and permissions are granted
+  // Use ref to prevent race conditions
+  const isRegisteringRef = useRef(false)
+  const lastRegistrationTimeRef = useRef<number>(0)
+
   useEffect(() => {
     if (user?.id && permissionsGranted) {
       const registerPushToken = async () => {
+        // Prevent concurrent registrations and rate limit (max once per 5 seconds)
+        const now = Date.now()
+        if (isRegisteringRef.current || (now - lastRegistrationTimeRef.current < 5000)) {
+          return
+        }
+
+        isRegisteringRef.current = true
+        lastRegistrationTimeRef.current = now
+
         try {
           const projectId = 
             Constants.expoConfig?.extra?.eas?.projectId ||
@@ -147,6 +160,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           })
 
           if (tokenData) {
+            // Validate token format
+            if (!tokenData.startsWith('ExponentPushToken[') && !tokenData.startsWith('ExpoPushToken[')) {
+              logger.warn('Invalid push token format', { token: tokenData.substring(0, 30) + '...' })
+              return
+            }
+
             // Save to Supabase user_push_tokens table
             // Get device ID if available
             const deviceId = await Notifications.getDevicePushTokenAsync().catch(() => null)
@@ -174,6 +193,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           }
         } catch (error) {
           logger.error('Error registering push token', error instanceof Error ? error : new Error(String(error)))
+        } finally {
+          isRegisteringRef.current = false
         }
       }
 

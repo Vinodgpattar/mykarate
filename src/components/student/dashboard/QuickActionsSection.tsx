@@ -75,7 +75,7 @@ export function QuickActionsSection() {
           >
             <Card style={styles.card}>
               <LinearGradient
-                colors={action.gradient as [string, string, ...string[]]}
+                colors={action.gradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.gradient}

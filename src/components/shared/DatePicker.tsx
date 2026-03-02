@@ -166,49 +166,72 @@ export function DatePicker({
           <View style={styles.pickerContainer}>
             <View style={styles.pickerWrapper}>
               <Text variant="labelSmall" style={styles.pickerLabel}>Year</Text>
-              <Picker
-                selectedValue={tempDate.year}
-                onValueChange={(year) => {
-                  setTempDate({ ...tempDate, year })
-                }}
-                style={styles.picker}
-              >
-                {years.map((year) => (
-                  <Picker.Item key={year} label={year.toString()} value={year} />
-                ))}
-              </Picker>
+              <View style={styles.pickerContainerInner}>
+                <Picker
+                  selectedValue={tempDate.year}
+                  onValueChange={(year) => {
+                    setTempDate({ ...tempDate, year })
+                  }}
+                  style={styles.picker}
+                  itemStyle={styles.pickerItem}
+                  dropdownIconColor="#7B2CBF"
+                >
+                  {years.map((year) => (
+                    <Picker.Item 
+                      key={year} 
+                      label={year.toString()} 
+                      value={year}
+                      color="#2196F3"
+                    />
+                  ))}
+                </Picker>
+              </View>
             </View>
 
             <View style={styles.pickerWrapper}>
               <Text variant="labelSmall" style={styles.pickerLabel}>Month</Text>
-              <Picker
-                selectedValue={tempDate.month}
-                onValueChange={(month) => {
-                  setTempDate({ ...tempDate, month })
-                }}
-                style={styles.picker}
-              >
-                {months.map((month) => (
-                  <Picker.Item
-                    key={month}
-                    label={monthNames[month - 1]}
-                    value={month}
-                  />
-                ))}
-              </Picker>
+              <View style={styles.pickerContainerInner}>
+                <Picker
+                  selectedValue={tempDate.month}
+                  onValueChange={(month) => {
+                    setTempDate({ ...tempDate, month })
+                  }}
+                  style={styles.picker}
+                  itemStyle={styles.pickerItem}
+                  dropdownIconColor="#7B2CBF"
+                >
+                  {months.map((month) => (
+                    <Picker.Item
+                      key={month}
+                      label={monthNames[month - 1]}
+                      value={month}
+                      color="#2196F3"
+                    />
+                  ))}
+                </Picker>
+              </View>
             </View>
 
             <View style={styles.pickerWrapper}>
               <Text variant="labelSmall" style={styles.pickerLabel}>Day</Text>
-              <Picker
-                selectedValue={tempDate.day}
-                onValueChange={(day) => setTempDate({ ...tempDate, day })}
-                style={styles.picker}
-              >
-                {days.map((day) => (
-                  <Picker.Item key={day} label={day.toString()} value={day} />
-                ))}
-              </Picker>
+              <View style={styles.pickerContainerInner}>
+                <Picker
+                  selectedValue={tempDate.day}
+                  onValueChange={(day) => setTempDate({ ...tempDate, day })}
+                  style={styles.picker}
+                  itemStyle={styles.pickerItem}
+                  dropdownIconColor="#7B2CBF"
+                >
+                  {days.map((day) => (
+                    <Picker.Item 
+                      key={day} 
+                      label={day.toString()} 
+                      value={day}
+                      color="#2196F3"
+                    />
+                  ))}
+                </Picker>
+              </View>
             </View>
           </View>
 
@@ -236,6 +259,14 @@ const styles = StyleSheet.create({
     padding: 20,
     margin: 20,
     borderRadius: 12,
+    maxHeight: '80%',
+    width: '90%',
+    maxWidth: 500,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
   modalHeader: {
     marginBottom: 20,
@@ -243,6 +274,8 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontWeight: 'bold',
     textAlign: 'center',
+    color: '#212121',
+    fontSize: 18,
   },
   pickerContainer: {
     flexDirection: 'row',
@@ -253,14 +286,39 @@ const styles = StyleSheet.create({
   pickerWrapper: {
     flex: 1,
     alignItems: 'center',
+    marginHorizontal: 4,
   },
   pickerLabel: {
     marginBottom: 8,
-    color: '#666',
+    color: '#424242',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  pickerContainerInner: {
+    width: '100%',
+    height: 150,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   picker: {
     width: '100%',
     height: 150,
+    backgroundColor: '#FFFFFF',
+  },
+  pickerItem: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#2196F3',
+    height: Platform.OS === 'android' ? 50 : 44,
+    textAlign: 'center',
   },
   modalActions: {
     flexDirection: 'row',

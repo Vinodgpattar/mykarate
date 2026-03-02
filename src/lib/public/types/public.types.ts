@@ -19,7 +19,7 @@ export interface Instructor {
 
 export interface PublicGalleryItem {
   id: string
-  media_type: 'image' | 'video'
+  media_type: 'image' | 'video' | 'youtube'
   title: string | null
   file_url: string
   thumbnail_url: string | null

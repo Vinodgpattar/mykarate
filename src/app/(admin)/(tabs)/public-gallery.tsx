@@ -29,6 +29,7 @@ import {
 } from '@/lib/public/services/galleryService'
 import type { PublicGalleryItem } from '@/lib/public/types/public.types'
 import { logger } from '@/lib/logger'
+import { extractYouTubeVideoId } from '@/components/public/YouTubePlayer'
 
 // Feature flag: Set to true to enable video upload feature
 const ENABLE_VIDEO_UPLOAD = false
@@ -49,6 +50,8 @@ export default function PublicGalleryScreen() {
   const [uploadConfirmVisible, setUploadConfirmVisible] = useState(false)
   const [pendingUpload, setPendingUpload] = useState<{ type: 'image' | 'video'; uri: string } | null>(null)
   const [uploadProgress, setUploadProgress] = useState({ visible: false, progress: 0, message: '' })
+  const [youtubeDialogVisible, setYoutubeDialogVisible] = useState(false)
+  const [youtubeUrl, setYoutubeUrl] = useState('')
 
   const loadGallery = useCallback(async () => {
     try {
@@ -303,6 +306,48 @@ export default function PublicGalleryScreen() {
   // Counts - items already filtered to active only by getAllGalleryItems
   const imageCount = items.filter(item => item.media_type === 'image').length
   const videoCount = items.filter(item => item.media_type === 'video').length
+  const youtubeCount = items.filter(item => item.media_type === 'youtube').length
+
+  const handleAddYouTube = async () => {
+    if (!youtubeUrl.trim() || !user?.id) {
+      setSnackbar({ visible: true, message: 'Please enter a valid YouTube URL' })
+      return
+    }
+
+    // Validate YouTube URL
+    const videoId = extractYouTubeVideoId(youtubeUrl.trim())
+    if (!videoId) {
+      setSnackbar({ visible: true, message: 'Invalid YouTube URL. Please use a valid YouTube link.' })
+      return
+    }
+
+    try {
+      setUploading(true)
+      
+      // Create gallery item with YouTube URL
+      const createResult = await createGalleryItem({
+        media_type: 'youtube',
+        file_url: youtubeUrl.trim(),
+        uploaded_by: user.id,
+        is_featured: false,
+      })
+
+      if (createResult.error) {
+        setSnackbar({ visible: true, message: createResult.error.message })
+        return
+      }
+
+      setSnackbar({ visible: true, message: 'YouTube video added successfully' })
+      setYoutubeDialogVisible(false)
+      setYoutubeUrl('')
+      await loadGallery()
+    } catch (error) {
+      logger.error('Error adding YouTube video', error as Error)
+      setSnackbar({ visible: true, message: 'Failed to add YouTube video' })
+    } finally {
+      setUploading(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -348,6 +393,19 @@ export default function PublicGalleryScreen() {
             </Card.Content>
           </Card>
         )}
+        {youtubeCount > 0 && (
+          <Card style={styles.statCard}>
+            <Card.Content style={styles.statContent}>
+              <MaterialCommunityIcons name="youtube" size={24} color="#FF0000" />
+              <Text variant="titleLarge" style={styles.statValue}>
+                {youtubeCount}
+              </Text>
+              <Text variant="bodySmall" style={styles.statLabel}>
+                YouTube Videos
+              </Text>
+            </Card.Content>
+          </Card>
+        )}
       </View>
 
       {/* Gallery Grid */}
@@ -372,58 +430,112 @@ export default function PublicGalleryScreen() {
           </Card>
         ) : (
           <View style={styles.grid}>
-            {items.map((item) => (
-              <Card key={item.id} style={styles.itemCard}>
-                {item.media_type === 'image' ? (
-                  <Image
-                    source={{ uri: item.file_url }}
-                    style={styles.itemImage}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={styles.videoContainer}>
-                    {item.thumbnail_url ? (
-                      <Image
-                        source={{ uri: item.thumbnail_url }}
-                        style={styles.itemImage}
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <View style={styles.videoPlaceholder}>
-                        <MaterialCommunityIcons name="play-circle" size={48} color="#FFFFFF" />
+            {items.map((item) => {
+              // Handle YouTube videos
+              if (item.media_type === 'youtube') {
+                const videoId = extractYouTubeVideoId(item.file_url)
+                const thumbnailUrl = videoId ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` : null
+                
+                return (
+                  <Card key={item.id} style={styles.itemCard}>
+                    <View style={styles.videoContainer}>
+                      {thumbnailUrl ? (
+                        <Image
+                          source={{ uri: thumbnailUrl }}
+                          style={styles.itemImage}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View style={styles.videoPlaceholder}>
+                          <MaterialCommunityIcons name="youtube" size={48} color="#FF0000" />
+                        </View>
+                      )}
+                      <View style={styles.playOverlay}>
+                        <MaterialCommunityIcons name="youtube" size={32} color="#FFFFFF" />
+                      </View>
+                    </View>
+                    {item.is_featured && (
+                      <View style={styles.featuredBadge}>
+                        <MaterialCommunityIcons name="star" size={16} color="#FFFFFF" />
                       </View>
                     )}
-                    <View style={styles.playOverlay}>
-                      <MaterialCommunityIcons name="play" size={24} color="#FFFFFF" />
+                    <Card.Actions style={styles.cardActions}>
+                      <IconButton
+                        icon="pencil"
+                        size={20}
+                        onPress={() => handleEdit(item)}
+                        iconColor="#7B2CBF"
+                      />
+                      <IconButton
+                        icon="delete"
+                        size={20}
+                        onPress={() => handleDelete(item)}
+                        iconColor="#DC2626"
+                      />
+                    </Card.Actions>
+                    {item.title && (
+                      <Text variant="bodySmall" style={styles.itemTitle} numberOfLines={1}>
+                        {item.title}
+                      </Text>
+                    )}
+                  </Card>
+                )
+              }
+              
+              // Handle images and uploaded videos
+              return (
+                <Card key={item.id} style={styles.itemCard}>
+                  {item.media_type === 'image' ? (
+                    <Image
+                      source={{ uri: item.file_url }}
+                      style={styles.itemImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.videoContainer}>
+                      {item.thumbnail_url ? (
+                        <Image
+                          source={{ uri: item.thumbnail_url }}
+                          style={styles.itemImage}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View style={styles.videoPlaceholder}>
+                          <MaterialCommunityIcons name="play-circle" size={48} color="#FFFFFF" />
+                        </View>
+                      )}
+                      <View style={styles.playOverlay}>
+                        <MaterialCommunityIcons name="play" size={24} color="#FFFFFF" />
+                      </View>
                     </View>
-                  </View>
-                )}
-                {item.is_featured && (
-                  <View style={styles.featuredBadge}>
-                    <MaterialCommunityIcons name="star" size={16} color="#FFFFFF" />
-                  </View>
-                )}
-                <Card.Actions style={styles.cardActions}>
-                  <IconButton
-                    icon="pencil"
-                    size={20}
-                    onPress={() => handleEdit(item)}
-                    iconColor="#7B2CBF"
-                  />
-                  <IconButton
-                    icon="delete"
-                    size={20}
-                    onPress={() => handleDelete(item)}
-                    iconColor="#DC2626"
-                  />
-                </Card.Actions>
-                {item.title && (
-                  <Text variant="bodySmall" style={styles.itemTitle} numberOfLines={1}>
-                    {item.title}
-                  </Text>
-                )}
-              </Card>
-            ))}
+                  )}
+                  {item.is_featured && (
+                    <View style={styles.featuredBadge}>
+                      <MaterialCommunityIcons name="star" size={16} color="#FFFFFF" />
+                    </View>
+                  )}
+                  <Card.Actions style={styles.cardActions}>
+                    <IconButton
+                      icon="pencil"
+                      size={20}
+                      onPress={() => handleEdit(item)}
+                      iconColor="#7B2CBF"
+                    />
+                    <IconButton
+                      icon="delete"
+                      size={20}
+                      onPress={() => handleDelete(item)}
+                      iconColor="#DC2626"
+                    />
+                  </Card.Actions>
+                  {item.title && (
+                    <Text variant="bodySmall" style={styles.itemTitle} numberOfLines={1}>
+                      {item.title}
+                    </Text>
+                  )}
+                </Card>
+              )
+            })}
           </View>
         )}
       </ScrollView>
@@ -433,20 +545,16 @@ export default function PublicGalleryScreen() {
         icon="plus"
         style={styles.fab}
         onPress={() => {
-          if (ENABLE_VIDEO_UPLOAD) {
-            Alert.alert(
-              'Upload Media',
-              'Choose media type',
-              [
-                { text: 'Image', onPress: handlePickImage },
-                { text: 'Video', onPress: handlePickVideo },
-                { text: 'Cancel', style: 'cancel' },
-              ]
-            )
-          } else {
-            // Directly open image picker if video upload is disabled
-            handlePickImage()
-          }
+          Alert.alert(
+            'Add to Gallery',
+            'Choose an option',
+            [
+              { text: 'Upload Image', onPress: handlePickImage },
+              { text: 'Add YouTube Link', onPress: () => setYoutubeDialogVisible(true) },
+              ...(ENABLE_VIDEO_UPLOAD ? [{ text: 'Upload Video', onPress: handlePickVideo }] : []),
+              { text: 'Cancel', style: 'cancel' },
+            ]
+          )
         }}
         loading={uploading}
         disabled={uploading}
@@ -510,6 +618,38 @@ export default function PublicGalleryScreen() {
           <Button onPress={() => setEditDialogVisible(false)}>Cancel</Button>
           <Button onPress={confirmEdit} mode="contained">
             Save
+          </Button>
+        </Dialog.Actions>
+      </Dialog>
+
+      {/* YouTube Link Dialog */}
+      <Dialog visible={youtubeDialogVisible} onDismiss={() => {
+        setYoutubeDialogVisible(false)
+        setYoutubeUrl('')
+      }}>
+        <Dialog.Title>Add YouTube Video</Dialog.Title>
+        <Dialog.Content>
+          <TextInput
+            label="YouTube URL"
+            value={youtubeUrl}
+            onChangeText={setYoutubeUrl}
+            mode="outlined"
+            placeholder="https://www.youtube.com/watch?v=..."
+            autoCapitalize="none"
+            keyboardType="url"
+            style={styles.youtubeInput}
+          />
+          <Text variant="bodySmall" style={styles.youtubeHint}>
+            Supported formats: youtube.com/watch?v=..., youtu.be/..., youtube.com/embed/...
+          </Text>
+        </Dialog.Content>
+        <Dialog.Actions>
+          <Button onPress={() => {
+            setYoutubeDialogVisible(false)
+            setYoutubeUrl('')
+          }}>Cancel</Button>
+          <Button onPress={handleAddYouTube} mode="contained" buttonColor="#7B2CBF" loading={uploading}>
+            Add Video
           </Button>
         </Dialog.Actions>
       </Dialog>
@@ -669,6 +809,14 @@ const styles = StyleSheet.create({
   },
   editInput: {
     marginBottom: 16,
+  },
+  youtubeInput: {
+    marginBottom: 8,
+  },
+  youtubeHint: {
+    marginTop: 8,
+    color: '#6B7280',
+    fontStyle: 'italic',
   },
   switchRow: {
     flexDirection: 'row',

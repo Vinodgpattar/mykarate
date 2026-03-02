@@ -147,11 +147,20 @@ export async function createLeaveInform(
               .in('user_id', adminUserIdsWithTokens)
 
             if (pushTokens && pushTokens.length > 0) {
-              const tokens = pushTokens.map((pt: any) => pt.token).filter(Boolean)
+              // Create map of token to user_id for tracking
+              const tokenToUserIdMap = new Map<string, string>()
+              const tokens: string[] = []
+              
+              pushTokens.forEach((pt: any) => {
+                if (pt.token && pt.user_id) {
+                  tokens.push(pt.token)
+                  tokenToUserIdMap.set(pt.token, pt.user_id)
+                }
+              })
               
               if (tokens.length > 0) {
                 const { sendExpoPushNotification } = await import('./admin-notifications')
-                await sendExpoPushNotification(
+                const pushResult = await sendExpoPushNotification(
                   tokens,
                   'New Leave Inform',
                   `${student.first_name} ${student.last_name} informed about leave`,
@@ -162,13 +171,38 @@ export async function createLeaveInform(
                   }
                 )
 
-                // Update push_sent status for successful sends
-                const { data: updatedRecipients } = await supabaseAdmin
-                  .from('notification_recipients')
-                  .update({ push_sent: true, push_sent_at: new Date().toISOString() })
-                  .eq('notification_id', notification.id)
-                  .in('user_id', adminUserIdsWithTokens)
-                  .select()
+                // Clean up invalid tokens from database
+                if (pushResult.invalidTokens.length > 0) {
+                  try {
+                    await supabaseAdmin
+                      .from('user_push_tokens')
+                      .delete()
+                      .in('token', pushResult.invalidTokens)
+                    logger.info('Removed invalid push tokens from leave inform notification', { count: pushResult.invalidTokens.length })
+                  } catch (cleanupError) {
+                    logger.error('Error cleaning up invalid tokens in leave inform', cleanupError as Error)
+                  }
+                }
+
+                // Update push_sent status ONLY for users whose tokens succeeded
+                if (pushResult.successfulIndices.length > 0) {
+                  const successfulUserIds: string[] = []
+                  pushResult.successfulIndices.forEach((index) => {
+                    const token = tokens[index]
+                    const userId = tokenToUserIdMap.get(token)
+                    if (userId) {
+                      successfulUserIds.push(userId)
+                    }
+                  })
+
+                  if (successfulUserIds.length > 0) {
+                    await supabaseAdmin
+                      .from('notification_recipients')
+                      .update({ push_sent: true, push_sent_at: new Date().toISOString() })
+                      .eq('notification_id', notification.id)
+                      .in('user_id', successfulUserIds)
+                  }
+                }
               }
             }
           }

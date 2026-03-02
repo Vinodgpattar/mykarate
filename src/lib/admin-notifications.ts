@@ -324,44 +324,135 @@ export async function takePhotoWithCamera(): Promise<{ uri: string | null; error
 }
 
 /**
- * Send Expo push notification
- * Returns array of successful token indices
+ * Validate Expo push token format
+ */
+function isValidExpoPushToken(token: string): boolean {
+  return token.startsWith('ExponentPushToken[') || token.startsWith('ExpoPushToken[')
+}
+
+/**
+ * Validate notification data (Expo limits: title 48 chars, body 2000 chars)
+ */
+function validateNotificationData(title: string, body: string): { valid: boolean; error?: string } {
+  if (!title || title.trim().length === 0) {
+    return { valid: false, error: 'Title cannot be empty' }
+  }
+  if (title.length > 48) {
+    return { valid: false, error: `Title exceeds 48 character limit (${title.length} chars)` }
+  }
+  if (!body || body.trim().length === 0) {
+    return { valid: false, error: 'Body cannot be empty' }
+  }
+  if (body.length > 2000) {
+    return { valid: false, error: `Body exceeds 2000 character limit (${body.length} chars)` }
+  }
+  return { valid: true }
+}
+
+/**
+ * Send Expo push notification with retry logic
+ * Returns array of successful token indices and list of invalid tokens to remove
  */
 export async function sendExpoPushNotification(
   tokens: string[],
   title: string,
   body: string,
-  data?: Record<string, unknown>
-): Promise<{ sent: number; failed: number; successfulIndices: number[] }> {
+  data?: Record<string, unknown>,
+  retries: number = 2
+): Promise<{ sent: number; failed: number; successfulIndices: number[]; invalidTokens: string[] }> {
   try {
     if (tokens.length === 0) {
-      return { sent: 0, failed: 0, successfulIndices: [] }
+      return { sent: 0, failed: 0, successfulIndices: [], invalidTokens: [] }
     }
 
-    const messages = tokens.map((token) => ({
+    // Validate notification data
+    const validation = validateNotificationData(title, body)
+    if (!validation.valid) {
+      logger.error('Invalid notification data', new Error(validation.error || 'Validation failed'))
+      return { sent: 0, failed: tokens.length, successfulIndices: [], invalidTokens: [] }
+    }
+
+    // Filter and validate tokens
+    const validTokens: string[] = []
+    const invalidTokens: string[] = []
+    const tokenIndexMap = new Map<string, number>() // Map valid token to original index
+
+    tokens.forEach((token, index) => {
+      if (token && isValidExpoPushToken(token)) {
+        validTokens.push(token)
+        tokenIndexMap.set(token, index)
+      } else {
+        invalidTokens.push(token)
+        logger.warn('Invalid push token format', { token: token?.substring(0, 30) + '...', index })
+      }
+    })
+
+    if (validTokens.length === 0) {
+      logger.warn('No valid push tokens to send', { total: tokens.length, invalid: invalidTokens.length })
+      return { sent: 0, failed: tokens.length, successfulIndices: [], invalidTokens }
+    }
+
+    const messages = validTokens.map((token) => ({
       to: token,
       sound: 'default',
-      title,
-      body,
+      title: title.substring(0, 48), // Ensure within limit
+      body: body.substring(0, 2000), // Ensure within limit
       data: data || {},
     }))
 
-    const response = await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Accept-Encoding': 'gzip, deflate',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(messages),
-    })
+    // Retry logic for transient failures
+    let lastError: Error | null = null
+    let response: Response | null = null
+    let result: any = null
 
-    if (!response.ok) {
-      logger.error('Expo push API error', new Error(`HTTP ${response.status}: ${response.statusText}`))
-      return { sent: 0, failed: tokens.length, successfulIndices: [] }
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        if (attempt > 0) {
+          // Exponential backoff: 1s, 2s, 4s
+          const delay = Math.pow(2, attempt - 1) * 1000
+          await new Promise((resolve) => setTimeout(resolve, delay))
+          logger.info(`Retrying push notification send (attempt ${attempt + 1}/${retries + 1})`)
+        }
+
+        response = await fetch('https://exp.host/--/api/v2/push/send', {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Accept-Encoding': 'gzip, deflate',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(messages),
+        })
+
+        if (!response.ok) {
+          // Don't retry on client errors (4xx), only server errors (5xx) and network errors
+          if (response.status >= 400 && response.status < 500) {
+            logger.error('Expo push API client error (no retry)', new Error(`HTTP ${response.status}: ${response.statusText}`))
+            return { sent: 0, failed: validTokens.length, successfulIndices: [], invalidTokens }
+          }
+          lastError = new Error(`HTTP ${response.status}: ${response.statusText}`)
+          if (attempt < retries) continue // Retry on server errors
+          logger.error('Expo push API error', lastError)
+          return { sent: 0, failed: validTokens.length, successfulIndices: [], invalidTokens }
+        }
+
+        result = await response.json()
+        break // Success, exit retry loop
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error))
+        if (attempt < retries) {
+          logger.warn(`Push notification send failed, will retry`, { attempt: attempt + 1, error: lastError.message })
+          continue
+        }
+        logger.error('Error sending push notifications', lastError)
+        return { sent: 0, failed: validTokens.length, successfulIndices: [], invalidTokens }
+      }
     }
 
-    const result = await response.json()
+    if (!result) {
+      logger.error('No result from Expo push API after retries', lastError || new Error('Unknown error'))
+      return { sent: 0, failed: validTokens.length, successfulIndices: [], invalidTokens }
+    }
     
     // Handle different response formats
     let receipts: any[] = []
@@ -373,33 +464,62 @@ export async function sendExpoPushNotification(
       receipts = result
     } else {
       logger.warn('Unexpected Expo push response format', { result })
-      return { sent: 0, failed: tokens.length, successfulIndices: [] }
+      return { sent: 0, failed: validTokens.length, successfulIndices: [], invalidTokens }
     }
 
     const successfulIndices: number[] = []
+    const failedTokens: string[] = []
     let sent = 0
     let failed = 0
 
     receipts.forEach((receipt: any, index: number) => {
+      const token = validTokens[index]
+      const originalIndex = tokenIndexMap.get(token) ?? index
+
       // Receipt can have status: 'ok' or error details
-      if (receipt.status === 'ok' || (receipt.status && receipt.status.includes('ok'))) {
+      if (receipt.status === 'ok' || (receipt.status && String(receipt.status).toLowerCase().includes('ok'))) {
         sent++
-        successfulIndices.push(index)
+        successfulIndices.push(originalIndex)
       } else {
         failed++
-        logger.warn('Push notification failed', { 
-          index, 
-          token: tokens[index]?.substring(0, 20) + '...', 
-          error: receipt.message || receipt.error || receipt.status 
-        })
+        const errorMessage = receipt.message || receipt.error || receipt.status || 'Unknown error'
+        const errorCode = receipt.details?.error || receipt.errorCode
+
+        // Check for invalid token errors (DeviceNotRegistered, InvalidCredentials, etc.)
+        const isInvalidToken = 
+          errorCode === 'DeviceNotRegistered' ||
+          errorCode === 'InvalidCredentials' ||
+          errorCode === 'InvalidToken' ||
+          (typeof errorMessage === 'string' && (
+            errorMessage.includes('DeviceNotRegistered') ||
+            errorMessage.includes('InvalidCredentials') ||
+            errorMessage.includes('InvalidToken')
+          ))
+
+        if (isInvalidToken) {
+          failedTokens.push(token)
+          logger.warn('Invalid push token detected, should be removed', { 
+            index: originalIndex, 
+            token: token.substring(0, 30) + '...', 
+            error: errorMessage,
+            errorCode
+          })
+        } else {
+          logger.warn('Push notification failed', { 
+            index: originalIndex, 
+            token: token.substring(0, 30) + '...', 
+            error: errorMessage,
+            errorCode
+          })
+        }
       }
     })
 
-    logger.info('Push notifications sent', { total: tokens.length, sent, failed })
-    return { sent, failed, successfulIndices }
+    logger.info('Push notifications sent', { total: validTokens.length, sent, failed, invalidTokens: invalidTokens.length, failedTokens: failedTokens.length })
+    return { sent, failed, successfulIndices, invalidTokens: [...invalidTokens, ...failedTokens] }
   } catch (error) {
     logger.error('Error sending push notifications', error as Error)
-    return { sent: 0, failed: tokens.length, successfulIndices: [] }
+    return { sent: 0, failed: tokens.length, successfulIndices: [], invalidTokens: [] }
   }
 }
 
@@ -514,7 +634,33 @@ export async function createNotification(
           type: data.type,
         })
 
-        // Update push_sent status for users whose tokens succeeded
+        // Clean up invalid tokens from database
+        if (pushResult.invalidTokens.length > 0) {
+          try {
+            await supabaseAdmin
+              .from('user_push_tokens')
+              .delete()
+              .in('token', pushResult.invalidTokens)
+            logger.info('Removed invalid push tokens', { count: pushResult.invalidTokens.length })
+          } catch (cleanupError) {
+            logger.error('Error cleaning up invalid tokens', cleanupError as Error)
+          }
+        }
+
+        // Clean up invalid tokens from database
+        if (pushResult.invalidTokens.length > 0) {
+          try {
+            await supabaseAdmin
+              .from('user_push_tokens')
+              .delete()
+              .in('token', pushResult.invalidTokens)
+            logger.info('Removed invalid push tokens', { count: pushResult.invalidTokens.length })
+          } catch (cleanupError) {
+            logger.error('Error cleaning up invalid tokens', cleanupError as Error)
+          }
+        }
+
+        // Update push_sent status ONLY for users whose tokens succeeded
         if (pushResult.successfulIndices.length > 0) {
           const successfulUserIds: string[] = []
           pushResult.successfulIndices.forEach((index) => {

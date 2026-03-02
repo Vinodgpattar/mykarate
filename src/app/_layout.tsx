@@ -73,13 +73,21 @@ export default function RootLayout() {
         }
 
         logger.info('Checking for app updates...')
-        const update = await Updates.checkForUpdateAsync()
+        
+        // Check for updates with timeout
+        const update = await Promise.race([
+          Updates.checkForUpdateAsync(),
+          new Promise<{ isAvailable: false }>((resolve) => 
+            setTimeout(() => resolve({ isAvailable: false }), 10000)
+          )
+        ]) as { isAvailable: boolean; manifest?: any }
         
         if (update.isAvailable) {
           logger.info('Update available, downloading...', { 
             manifest: update.manifest?.id,
             createdAt: update.manifest?.createdAt 
           })
+          
           const result = await Updates.fetchUpdateAsync()
           logger.info('Update downloaded successfully', { 
             isNew: result.isNew,
@@ -98,10 +106,11 @@ export default function RootLayout() {
       }
     }
 
-    // Small delay to ensure app is fully initialized
+    // Check immediately and also after a delay
+    checkForUpdates()
     const timeoutId = setTimeout(() => {
       checkForUpdates()
-    }, 1000)
+    }, 3000)
 
     return () => clearTimeout(timeoutId)
   }, [])

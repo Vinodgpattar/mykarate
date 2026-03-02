@@ -62,6 +62,57 @@ export interface BeltGrading {
 }
 
 /**
+ * Parse a YYYY-MM-DD date string into a local Date (no timezone shifts).
+ * This avoids the subtle bugs of new Date('YYYY-MM-DD') which is treated as UTC.
+ */
+function parseLocalDate(dateStr: string): Date {
+  const parts = dateStr.split('-')
+  if (parts.length !== 3) {
+    throw new Error(`Invalid date format, expected YYYY-MM-DD but got: ${dateStr}`)
+  }
+  const year = parseInt(parts[0], 10)
+  const month = parseInt(parts[1], 10) - 1 // 0-indexed
+  const day = parseInt(parts[2], 10)
+
+  const d = new Date(year, month, day)
+  d.setHours(0, 0, 0, 0)
+
+  if (isNaN(d.getTime())) {
+    throw new Error(`Invalid date components for YYYY-MM-DD: ${dateStr}`)
+  }
+
+  return d
+}
+
+/**
+ * Helper to subtract a number of months from a date, keeping end-of-month behaviour sane.
+ * Used for yearly billing "one month before period end" logic.
+ */
+function subtractMonths(date: Date, months: number): Date {
+  const year = date.getFullYear()
+  const month = date.getMonth()
+  const day = date.getDate()
+
+  let targetYear = year
+  let targetMonth = month - months
+
+  while (targetMonth < 0) {
+    targetMonth += 12
+    targetYear -= 1
+  }
+
+  const result = new Date(targetYear, targetMonth, day)
+
+  // If the day doesn't exist in the target month, go to last day of that month
+  if (result.getMonth() !== targetMonth) {
+    result.setDate(0)
+  }
+
+  result.setHours(0, 0, 0, 0)
+  return result
+}
+
+/**
  * Get fee configuration for a specific fee type
  * For grading fees, beltLevel is required
  */
@@ -511,106 +562,136 @@ function getCorrectFeeStatus(fee: StudentFee): FeeStatus {
 }
 
 /**
- * Ensure upcoming yearly fee is generated when within one month of current period end
- * This function checks if a student has a paid yearly fee ending within one month,
- * and generates the next yearly fee if it doesn't exist yet.
+ * Ensure monthly fees are generated up to (and including) the month that covers "today".
+ *
+ * Rules:
+ * - Next monthly fee is generated ONLY when today > last_period_end_date.
+ * - If multiple months were missed, generate all missing months until today is covered.
+ * - Generation is time-driven (called from getStudentFees), not payment-driven.
  */
-async function ensureUpcomingYearlyFee(studentId: string): Promise<void> {
+async function ensureMonthlyFeesUpToDate(studentId: string): Promise<void> {
   try {
-    if (!supabaseAdmin) {
-      return
-    }
+    if (!supabaseAdmin) return
 
-    // Get student's payment preference
-    const prefResult = await getStudentPaymentPreference(studentId)
-    if (!prefResult.preference || prefResult.preference.payment_type !== 'yearly') {
-      // Student is not on yearly plan, nothing to do
-      return
-    }
-
-    // Get the most recent paid yearly fee
-    const { data: paidYearlyFees, error: feesError } = await supabaseAdmin
+    // Get the latest monthly fee by period_end_date
+    const { data, error } = await supabaseAdmin
       .from('student_fees')
       .select('*')
       .eq('student_id', studentId)
-      .eq('fee_type', 'yearly')
-      .eq('status', 'paid')
+      .eq('fee_type', 'monthly')
       .not('period_end_date', 'is', null)
       .order('period_end_date', { ascending: false })
       .limit(1)
 
-    if (feesError || !paidYearlyFees || paidYearlyFees.length === 0) {
-      // No paid yearly fees found, nothing to do
+    if (error || !data || data.length === 0) {
+      // No monthly fees yet – nothing to extend here
       return
     }
 
-    const currentFee = paidYearlyFees[0] as StudentFee
-    if (!currentFee.period_end_date) {
+    let lastFee = data[0] as StudentFee
+    if (!lastFee.period_end_date) {
       return
     }
 
-    // Check if we're within one month of the period end date
-    const periodEndDate = new Date(currentFee.period_end_date)
-    periodEndDate.setHours(0, 0, 0, 0)
-
+    let lastPeriodEnd = parseLocalDate(lastFee.period_end_date)
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    // Calculate one month before period end
-    const periodEndYear = periodEndDate.getFullYear()
-    const periodEndMonth = periodEndDate.getMonth()
-    const periodEndDay = periodEndDate.getDate()
-    
-    // Calculate target month (one month before)
-    let targetYear = periodEndYear
-    let targetMonth = periodEndMonth - 1
-    
-    // Handle year underflow (January -> December of previous year)
-    if (targetMonth < 0) {
-      targetMonth = 11 // December
-      targetYear = periodEndYear - 1
-    }
-    
-    // Create one month before date (use same day of month, but handle month-end edge cases)
-    const oneMonthBefore = new Date(targetYear, targetMonth, periodEndDay)
-    
-    // If the day doesn't exist in the target month, set to last day of target month
-    if (oneMonthBefore.getMonth() !== targetMonth) {
-      oneMonthBefore.setDate(0) // Go to last day of previous month (which is the target month)
-    }
-    
-    oneMonthBefore.setHours(0, 0, 0, 0)
+    // Safety guard: don't generate an unbounded number of months in one call
+    let iterations = 0
+    const MAX_MONTHS_TO_GENERATE = 36
 
-    // Only generate if we're at or past the "one month before" date
-    if (today < oneMonthBefore) {
-      // Too early, don't generate yet
+    // While today is strictly after the last period end, generate the next period
+    while (lastPeriodEnd < today && iterations < MAX_MONTHS_TO_GENERATE) {
+      const created = await generateNextPeriodFee(studentId, 'monthly', lastFee.period_end_date)
+      if (!created || !created.period_end_date) {
+        break
+      }
+
+      lastFee = created
+      lastPeriodEnd = parseLocalDate(created.period_end_date)
+      iterations += 1
+    }
+  } catch (error) {
+    logger.error('Unexpected error ensuring monthly fees are up to date', error as Error, { studentId })
+  }
+}
+
+/**
+ * Ensure yearly fees are generated up to date following these rules:
+ *
+ * - Next yearly fee should become visible when today >= (period_end_date - 1 month).
+ * - Only one yearly fee per yearly period.
+ * - If multiple years were missed, generate all missing yearly fees until today is covered.
+ *
+ * This is called from getStudentFees (time-driven), not from payments.
+ */
+async function ensureYearlyFeesUpToDate(studentId: string): Promise<void> {
+  try {
+    if (!supabaseAdmin) return
+
+    // Respect student's payment preference – only work for yearly plans
+    const prefResult = await getStudentPaymentPreference(studentId)
+    if (!prefResult.preference || prefResult.preference.payment_type !== 'yearly') {
       return
     }
 
-    // Check if next fee already exists
-    const { data: existingNextFee } = await supabaseAdmin
+    // Get latest yearly fee (any status) by period_end_date
+    const { data, error } = await supabaseAdmin
       .from('student_fees')
-      .select('id')
+      .select('*')
       .eq('student_id', studentId)
       .eq('fee_type', 'yearly')
-      .gt('period_start_date', currentFee.period_end_date)
-      .maybeSingle()
+      .not('period_end_date', 'is', null)
+      .order('period_end_date', { ascending: false })
+      .limit(1)
 
-    if (existingNextFee) {
-      // Next fee already exists, nothing to do
+    if (error || !data || data.length === 0) {
+      // No yearly fees yet – nothing to extend here
       return
     }
 
-    // Generate the next yearly fee
-    await generateNextPeriodFee(studentId, 'yearly', currentFee.period_end_date)
+    let lastFee = data[0] as StudentFee
+    if (!lastFee.period_end_date) {
+      return
+    }
 
-    logger.info('Upcoming yearly fee generated', {
-      studentId,
-      currentPeriodEnd: currentFee.period_end_date,
-    })
+    let lastPeriodEndStr = lastFee.period_end_date
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    let iterations = 0
+    const MAX_YEARS_TO_GENERATE = 10
+
+    while (iterations < MAX_YEARS_TO_GENERATE) {
+      const lastPeriodEnd = parseLocalDate(lastPeriodEndStr)
+      const oneMonthBefore = subtractMonths(lastPeriodEnd, 1)
+
+      // If today is before one month before the current period end AND
+      // the current period still covers today, we are up to date
+      if (today < oneMonthBefore && today <= lastPeriodEnd) {
+        break
+      }
+
+      // If today is before one month before but already after lastPeriodEnd,
+      // we are historically behind – still generate the next period.
+      if (today >= oneMonthBefore) {
+        const created = await generateNextPeriodFee(studentId, 'yearly', lastPeriodEndStr)
+        if (!created || !created.period_end_date) {
+          break
+        }
+        lastFee = created
+        lastPeriodEndStr = created.period_end_date
+        iterations += 1
+
+        // After generating the next year's fee, loop again to see if more are needed
+        continue
+      }
+
+      break
+    }
   } catch (error) {
-    logger.error('Unexpected error ensuring upcoming yearly fee', error as Error)
-    // Don't throw - this is a background operation
+    logger.error('Unexpected error ensuring yearly fees are up to date', error as Error, { studentId })
   }
 }
 
@@ -629,11 +710,11 @@ export async function getStudentFees(
       return { fees: null, error: new Error('Service role key not configured') }
     }
 
-    // Ensure upcoming yearly fee is generated if needed (one month before period end)
-    // This runs in the background and won't block the query
-    ensureUpcomingYearlyFee(studentId).catch((err) => {
-      logger.error('Error in ensureUpcomingYearlyFee', err as Error)
-    })
+    // TIME-DRIVEN BILLING ENGINE
+    // Before reading fees, make sure monthly and yearly fees are generated
+    // up to the current date according to the billing rules.
+    await ensureMonthlyFeesUpToDate(studentId)
+    await ensureYearlyFeesUpToDate(studentId)
 
     let query = supabaseAdmin.from('student_fees').select('*').eq('student_id', studentId)
 
@@ -754,7 +835,8 @@ export async function recordPayment(
       notes: paymentData.notes || null,
     }
 
-    // If fully paid
+    // If fully paid, only update fee status – generation of the next period
+    // is handled by time-driven helpers (ensureMonthlyFeesUpToDate / ensureYearlyFeesUpToDate)
     if (newPaidAmount >= totalAmount) {
       updateData.status = 'paid'
       updateData.paid_at = new Date().toISOString()
@@ -797,12 +879,6 @@ export async function recordPayment(
       }
     }
 
-    // If monthly fee is fully paid, generate next period fee immediately
-    // For yearly fees, next fee will be generated one month before period end (handled by ensureUpcomingYearlyFee)
-    if (newPaidAmount >= totalAmount && fee.fee_type === 'monthly') {
-      await generateNextPeriodFee(fee.student_id, fee.fee_type, fee.period_end_date)
-    }
-
     logger.info('Payment recorded successfully', { studentFeeId, amount: paymentData.amount })
     return { success: true, error: null }
   } catch (error) {
@@ -821,11 +897,11 @@ async function generateNextPeriodFee(
   studentId: string,
   feeType: 'monthly' | 'yearly',
   previousPeriodEndDate: string | null
-): Promise<void> {
+): Promise<StudentFee | null> {
   try {
     if (!previousPeriodEndDate) {
       logger.warn('Cannot generate next period fee: no previous period end date', { studentId, feeType })
-      return
+      return null
     }
 
     // Get student's branch and payment preference
@@ -866,13 +942,12 @@ async function generateNextPeriodFee(
     // Get enrollment day from payment preference for monthly fees
     let enrollmentDay: number | null = null
     if (feeType === 'monthly' && prefResult.preference) {
-      const enrollmentDateObj = new Date(prefResult.preference.started_from)
+      const enrollmentDateObj = parseLocalDate(prefResult.preference.started_from)
       enrollmentDay = enrollmentDateObj.getDate()
     }
-
-    // Parse the previous period end date properly
-    const previousEnd = new Date(previousPeriodEndDate)
-    previousEnd.setHours(0, 0, 0, 0) // Normalize to start of day
+    
+    // Parse the previous period end date properly (stored as YYYY-MM-DD)
+    const previousEnd = parseLocalDate(previousPeriodEndDate)
     
     let periodStart: Date
     let periodEnd: Date
@@ -928,65 +1003,75 @@ async function generateNextPeriodFee(
       periodEnd.setHours(23, 59, 59, 999) // End of day
 
       // Due date is one month before period end (available to pay from one month before)
-      // Calculate one month before period end
-      const periodEndYear = periodEnd.getFullYear()
-      const periodEndMonth = periodEnd.getMonth()
-      const periodEndDay = periodEnd.getDate()
-      
-      // Calculate target month (one month before)
-      let targetYear = periodEndYear
-      let targetMonth = periodEndMonth - 1
-      
-      // Handle year underflow (January -> December of previous year)
-      if (targetMonth < 0) {
-        targetMonth = 11 // December
-        targetYear = periodEndYear - 1
-      }
-      
-      // Create due date (use same day of month, but handle month-end edge cases)
-      dueDate = new Date(targetYear, targetMonth, periodEndDay)
-      
-      // If the day doesn't exist in the target month (e.g., Jan 31 -> Feb 31 becomes Mar 3),
-      // set to last day of target month
-      if (dueDate.getMonth() !== targetMonth) {
-        dueDate.setDate(0) // Go to last day of previous month (which is the target month)
-      }
-      
+      // Calculate one month before period end to determine due date
+      const oneMonthBeforeEnd = subtractMonths(periodEnd, 1)
+      dueDate = new Date(oneMonthBeforeEnd)
       dueDate.setHours(0, 0, 0, 0)
     }
 
-    // Check for existing fee for this period
-    const { data: existingFee } = await supabaseAdmin
+    const newPeriodStartStr = periodStart.toISOString().split('T')[0]
+    const newPeriodEndStr = periodEnd.toISOString().split('T')[0]
+
+    // Strong duplicate protection: check for ANY overlapping period (all statuses)
+    const { data: existingFees } = await supabaseAdmin
       .from('student_fees')
-      .select('id')
+      .select('id, period_start_date, period_end_date, status')
       .eq('student_id', studentId)
       .eq('fee_type', feeType)
-      .eq('period_start_date', periodStart.toISOString().split('T')[0])
-      .eq('period_end_date', periodEnd.toISOString().split('T')[0])
-      .maybeSingle()
+      .not('period_start_date', 'is', null)
+      .not('period_end_date', 'is', null)
 
-    if (existingFee) {
-      logger.info('Next period fee already exists, skipping generation', {
-        studentId,
-        feeType,
-        periodStart: periodStart.toISOString().split('T')[0],
-      })
-      return
+    if (existingFees) {
+      for (const existing of existingFees) {
+        if (
+          existing.period_start_date <= newPeriodEndStr &&
+          existing.period_end_date >= newPeriodStartStr
+        ) {
+          logger.info('Overlapping fee period detected, skipping next period generation', {
+            studentId,
+            feeType,
+            newPeriod: { start: newPeriodStartStr, end: newPeriodEndStr },
+            existingPeriod: {
+              start: existing.period_start_date,
+              end: existing.period_end_date,
+              status: existing.status,
+            },
+          })
+          return null
+        }
+      }
     }
 
     // Create next period fee
-    await createStudentFee({
+    const createdResult = await createStudentFee({
       studentId,
       feeType,
       amount: feeResult.fee.amount,
       dueDate: dueDate.toISOString().split('T')[0],
-      periodStartDate: periodStart.toISOString().split('T')[0],
-      periodEndDate: periodEnd.toISOString().split('T')[0],
+      periodStartDate: newPeriodStartStr,
+      periodEndDate: newPeriodEndStr,
     })
 
-    logger.info('Next period fee generated', { studentId, feeType, periodStart, periodEnd })
+    if (createdResult.error || !createdResult.fee) {
+      logger.error('Error creating next period fee', createdResult.error as Error, {
+        studentId,
+        feeType,
+        periodStart: newPeriodStartStr,
+        periodEnd: newPeriodEndStr,
+      })
+      return null
+    }
+
+    logger.info('Next period fee generated', {
+      studentId,
+      feeType,
+      periodStart: newPeriodStartStr,
+      periodEnd: newPeriodEndStr,
+    })
+    return createdResult.fee
   } catch (error) {
     logger.error('Unexpected error generating next period fee', error as Error)
+    return null
   }
 }
 
@@ -1003,8 +1088,7 @@ export async function initializeStudentFees(
     await setStudentPaymentPreference(studentId, paymentType, enrollmentDate)
 
     // Parse enrollment date to extract the day of month
-    const enrollmentDateObj = new Date(enrollmentDate)
-    enrollmentDateObj.setHours(0, 0, 0, 0)
+    const enrollmentDateObj = parseLocalDate(enrollmentDate)
     const enrollmentDay = enrollmentDateObj.getDate() // Get day of month (1-31)
     const enrollmentMonth = enrollmentDateObj.getMonth() // Get month (0-11)
     
@@ -1266,11 +1350,12 @@ export async function switchPaymentPreference(
     }
 
     // Validate switch date format
-    const switchDateObj = new Date(switchDate)
-    if (isNaN(switchDateObj.getTime())) {
+    let switchDateObj: Date
+    try {
+      switchDateObj = parseLocalDate(switchDate)
+    } catch {
       return { success: false, error: new Error('Invalid switch date format. Use YYYY-MM-DD') }
     }
-    switchDateObj.setHours(0, 0, 0, 0)
 
     // Get current preference
     const currentPrefResult = await getStudentPaymentPreference(studentId)

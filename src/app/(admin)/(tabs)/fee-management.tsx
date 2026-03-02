@@ -16,7 +16,7 @@ const FEE_TYPE_LABELS: Record<FeeType, string> = {
 }
 
 // Belt levels for grading fees (as specified by user)
-const BELT_LEVELS = ['Yellow', 'Orange', 'Green', 'Blue', 'Purple', 'Brown 3', 'Brown 2', 'Brown 1', 'Black']
+const BELT_LEVELS = ['Yellow', 'Orange', 'Green', 'Blue', 'Purple', 'Brown 4', 'Brown 3', 'Brown 2', 'Brown 1', 'Black']
 
 export default function FeeManagementScreen() {
   const insets = useSafeAreaInsets()
